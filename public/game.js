@@ -9,7 +9,7 @@ const ALL_LEVELS = [
   { id: 2, idx: 1, name: 'The Step',          icon: '📦', tag: 'Heavy Box DDS',     desc: 'Dorong peti bersama & tumpuk badan lewati tembok.', unlocked: true },
   { id: 3, idx: 2, name: 'Hold the Door',     icon: '⚡', tag: 'Multi-Buttons DDS', desc: 'Injak tombol jurang untuk nyalakan jembatan ganda.', unlocked: true },
   { id: 4, idx: 3, name: 'Bouncer',           icon: '🦘', tag: 'Springboard Co-op', desc: 'Lompat dari trampolin & tumpuk badan di udara.',  unlocked: true },
-  { id: 5, idx: 4, name: 'Sacrifice & Trust', icon: '🚨', tag: 'Laser Corridor',    desc: 'Tahan tombol laser agar rekan runner bisa lewat.',  unlocked: true },
+  { id: 5, idx: 4, name: 'Shield Co-op',      icon: '🛡️', tag: 'Dual-Shield Synergy', desc: 'P1 pelindung atas, P2 pelindung depan. Tumpuk badan & tembus laser!', unlocked: true },
   { id: 6, idx: 5, name: 'The Tower',         icon: '🗼', tag: 'Tower Stacking',    desc: 'Tumpuk seluruh badan setinggi menara.',            unlocked: false },
   { id: 7, idx: 6, name: 'Team Push',         icon: '🪨', tag: 'All Players Push',  desc: 'Dorong batu raksasa bersama seluruh tim.',         unlocked: false },
   { id: 8, idx: 7, name: 'Moving Ferry',      icon: '🚢', tag: 'Electric Ferry',    desc: 'Menyeberang di atas platform gerak sempit.',       unlocked: false },
@@ -390,7 +390,11 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   hudKeyStatus.classList.remove('collected');
 
   if (hudDDS) {
-    hudDDS.textContent = `⚙ DDS: ${pCount} Pemain (Skala ${pCount - 1}x)`;
+    if (level.id === 5) {
+      hudDDS.textContent = '🛡️ Dual-Shield Co-op: P1 (Top Shield) & P2 (Front Shield)';
+    } else {
+      hudDDS.textContent = `⚙ DDS: ${pCount} Pemain (Skala ${pCount - 1}x)`;
+    }
   }
 
   btnLeave.classList.remove('hidden');
@@ -750,56 +754,97 @@ function drawButtons() {
   });
 }
 
-// ── Dynamic Lasers (Level 5 Hazard DDS) ───────────────────────────────────────
+// ── Dynamic Lasers (Level 5 Hazard & Dual-Shield Co-op) ──────────────────────
 function drawLasers() {
   laserAnim += 0.08;
 
   currentLasers.forEach(laser => {
-    const isOff = laser.isBlocked || !laser.active;
+    const isHorizontal = laser.orientation === 'horizontal';
+    const isOff = keyCollected;
+    const isShielded = laser.blockedByShield;
 
-    // Node emiter atas & bawah
+    const lx = laser.x;
+    const ly = laser.y;
+    const lw = isHorizontal ? (isShielded && laser.cutRight ? Math.max(10, laser.cutRight - lx) : laser.w) : laser.w;
+    const lh = !isHorizontal ? (isShielded && laser.cutBottom ? Math.max(10, laser.cutBottom - ly) : laser.h) : laser.h;
+
+    // Emitter nodes
     ctx.fillStyle = '#1e293b';
-    roundRect(ctx, laser.x - 6, laser.y - 12, laser.w + 12, 14, 4);
-    ctx.fill();
-    roundRect(ctx, laser.x - 6, laser.y + laser.h - 2, laser.w + 12, 14, 4);
-    ctx.fill();
+    if (isHorizontal) {
+      roundRect(ctx, lx - 10, ly - 4, 12, laser.h + 8, 3);
+      ctx.fill();
+      roundRect(ctx, lx + laser.w - 2, ly - 4, 12, laser.h + 8, 3);
+      ctx.fill();
+    } else {
+      roundRect(ctx, lx - 4, ly - 10, laser.w + 8, 12, 3);
+      ctx.fill();
+      roundRect(ctx, lx - 4, ly + laser.h - 2, laser.w + 8, 12, 3);
+      ctx.fill();
+    }
 
     if (!isOff) {
-      // Sinar laser menyala aktif (Merah Mematikan)
       ctx.save();
       const pulse = Math.sin(laserAnim) * 4;
       ctx.shadowColor = '#ff0033';
-      ctx.shadowBlur  = 22 + pulse;
+      ctx.shadowBlur  = 20 + pulse;
 
       // Glow beam
       ctx.fillStyle = 'rgba(255, 0, 51, 0.75)';
-      ctx.fillRect(laser.x - 1, laser.y, laser.w + 2, laser.h);
+      ctx.fillRect(lx, ly, lw, lh);
 
-      // Core putih bertegangan tinggi
+      // Core putih
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(laser.x + laser.w / 2 - 2, laser.y, 4, laser.h);
+      if (isHorizontal) {
+        ctx.fillRect(lx, ly + laser.h / 2 - 2, lw, 4);
+      } else {
+        ctx.fillRect(lx + laser.w / 2 - 2, ly, 4, lh);
+      }
       ctx.restore();
 
-      // Peringatan bahaya
-      ctx.fillStyle = '#ff0033';
-      ctx.font      = 'bold 9px Segoe UI';
-      ctx.textAlign = 'center';
-      ctx.fillText('⚡ BAHAYA', laser.x + laser.w / 2, laser.y - 16);
+      // Percikan perisai jika sedang menahan laser (Deflection Spark)
+      if (isShielded) {
+        ctx.save();
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur  = 25;
+        ctx.fillStyle   = '#ffffff';
+        const sparkX = isHorizontal ? lx + lw : lx + laser.w / 2;
+        const sparkY = isHorizontal ? ly + laser.h / 2 : ly + lh;
+        ctx.beginPath();
+        ctx.arc(sparkX, sparkY, 8 + Math.sin(laserAnim * 2) * 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle   = '#38bdf8';
+        ctx.font        = 'bold 10px Segoe UI';
+        ctx.textAlign   = 'center';
+        ctx.fillText('⚡ SHIELDED!', sparkX, sparkY - 14);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#ff0033';
+        ctx.font      = 'bold 9px Segoe UI';
+        ctx.textAlign = 'center';
+        const labelX = lx + laser.w / 2;
+        const labelY = isHorizontal ? ly - 8 : ly - 14;
+        ctx.fillText('⚡ LASER BAHAYA', labelX, labelY);
+      }
     } else {
-      // Laser dinonaktifkan oleh rekan tim yang menahan tombol
+      // Laser mati setelah kunci diambil
       ctx.save();
       ctx.setLineDash([4, 6]);
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(laser.x + laser.w / 2, laser.y);
-      ctx.lineTo(laser.x + laser.w / 2, laser.y + laser.h);
+      if (isHorizontal) {
+        ctx.moveTo(lx, ly + laser.h / 2);
+        ctx.lineTo(lx + laser.w, ly + laser.h / 2);
+      } else {
+        ctx.moveTo(lx + laser.w / 2, ly);
+        ctx.lineTo(lx + laser.w / 2, ly + laser.h);
+      }
       ctx.stroke();
 
       ctx.fillStyle = '#10b981';
       ctx.font      = 'bold 9px Segoe UI';
       ctx.textAlign = 'center';
-      ctx.fillText('✓ AMAN', laser.x + laser.w / 2, laser.y - 16);
+      ctx.fillText('✓ AMAN', lx + laser.w / 2, ly - 10);
       ctx.restore();
     }
   });
@@ -1040,6 +1085,47 @@ function drawPlayer(p) {
     ctx.font      = 'bold 11px Segoe UI';
     ctx.textAlign = 'center';
     ctx.fillText('✓ SIAP', x + W / 2, y - 32);
+  }
+
+  // 🛡️ DUAL-SHIELD CO-OP RENDERING (Level 5)
+  if (p.shieldType === 'top') {
+    // Top Shield: Energy canopy hovering above head
+    ctx.save();
+    ctx.shadowColor = '#06b6d4';
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = 'rgba(6, 182, 212, 0.5)';
+    roundRect(ctx, x - 10, y - 14, W + 20, 8, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#06b6d4';
+    ctx.font      = 'bold 9px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🛡️ TOP SHIELD', x + W / 2, y - 18);
+    ctx.restore();
+  } else if (p.shieldType === 'front') {
+    // Front Shield: Tall energy barrier in front of body
+    ctx.save();
+    const face = facing || 1;
+    const sX = (face === 1) ? x + W + 2 : x - 14;
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur  = 18;
+    ctx.fillStyle   = 'rgba(245, 158, 11, 0.5)';
+    roundRect(ctx, sX, y - 6, 12, H + 12, 4);
+    ctx.fill();
+
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth   = 2.5;
+    ctx.stroke();
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font      = 'bold 9px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🛡️ FRONT', sX + 6, y - 10);
+    ctx.restore();
   }
 }
 

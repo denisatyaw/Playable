@@ -2,14 +2,14 @@
 
 // ── LEVEL 2: The Step (Expanded Multi-Stage Heavy Box, Stacking & Anti-Strand Gate)
 // Jarak: 2400 px (60 Kolom, 2x Panjang Layar)
-// Kamera bergerak mengikuti tim. Pemain dibatasi di dalam batas layar bersama.
-// Stage 1: Dorong Peti 1 untuk lewati dinding pertama (120px). Ada anak tangga balik di sisi kanan.
-// Stage 2: Terdapat 2 Peti (Peti Berat + Peti Tumpuk). Pemain bisa menumpuk kotak / saling menumpuk badan.
-// ANTI-STRAND PENCEGAHAN:
-// Begitu kawan pertama melompati dinding, di sisi kanan dinding terdapat tombol [🔓 BUKA GERBANG].
+// Stage 1: Dorong Peti 1 (x: 380) untuk lewati dinding pertama (120px).
+// Stage 2: Dorong Peti 2 (x: 1040) ke dinding kedua (160px).
+// MEKANIK ANTI-STRAND:
+// Kawan pertama melompati dinding dengan menumpuk badan di atas kawan yang berdiri di atas peti.
+// Begitu kawan pertama mendarat di seberang, terdapat tombol [🔓 BUKA GERBANG] di x: 1540.
 // Menginjak tombol ini akan membuka Gerbang Bawah secara permanen sehingga SEMUA kawan di belakang
 // bisa langsung lewat tanpa ada yang ketinggalan/terjebak!
-// Stage 3: Anak tangga dari lantai memudahkan siapa pun naik ke platform Kunci dan Pintu Keluar.
+// Stage 3: Anak tangga dari lantai memudahkan naik ke platform Kunci (x: 1820) dan Pintu Keluar (x: 2280).
 
 module.exports = {
   id      : 2,
@@ -30,8 +30,8 @@ module.exports = {
     '000000000000000000000000000000000000000000011110000000000000', // 6 - Kunci di sini
     '000000000000000000000000000000000000000000000000000000000000', // 7
     '000000000000000000000000000000000000000011000000000000000000', // 8  - Platform atas
-    '000000000000000000000000000000000001100000000000000000000000', // 9  - Dinding atas Stage 2 (col 35-36)
-    '000000000000000000000000000000000001100000110000000000000000', // 10 - Dinding + Anak tangga col 41-42
+    '000000000000000000000000000000000000000000000000000000000000', // 9
+    '000000000000000000000000000000000001100000110000000000000000', // 10 - Dinding Stage 2 col 35-36 (160px) + Tangga col 41-42
     '000000000000000011000000000000000001100000000000000000000000', // 11 - Dinding Stage 1 + Dinding Stage 2
     '000000000000000011100000000000000000000001100000000000000000', // 12 - Step balik Stg 1 + Gerbang Stg 2 (00) + Step Stg 2
     '000000000000000011000000000000000000000000000000000000000000', // 13 - Gerbang Stg 2 (00)
@@ -61,29 +61,17 @@ module.exports = {
       onGround: true,
       minPushersFormula: (pCount) => Math.max(1, pCount - 1),
     },
-    // Peti 2A (Stage 2 - Heavy Box DDS): di x: 960
+    // Peti 2 (Stage 2 - Heavy Box DDS): di x: 1040
     {
-      id: 'box_stage_2_a',
-      x: 960,
-      y: 504,
-      w: 56,
-      h: 56,
+      id: 'box_stage_2',
+      x: 1040,
+      y: 500,
+      w: 60,
+      h: 60,
       vx: 0,
       vy: 0,
       onGround: true,
       minPushersFormula: (pCount) => Math.max(1, pCount - 1),
-    },
-    // Peti 2B (Stage 2 - Utility / Stacking Box): di x: 1080
-    {
-      id: 'box_stage_2_b',
-      x: 1080,
-      y: 510,
-      w: 50,
-      h: 50,
-      vx: 0,
-      vy: 0,
-      onGround: true,
-      minPushers: 1, // Bisa didorong sendirian untuk tumpukan tangga
     }
   ],
   // Gerbang pencegah ketinggalan: Terbuka saat kawan menekan tombol di seberang!

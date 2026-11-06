@@ -100,7 +100,7 @@ function resolveAABBVsTiles(lvl, px, py, pvx, pvy, pw, ph, dt) {
   let vy = pvy;
   let onGround = false;
 
-  // Horizontal
+  // 1. Horizontal vs Tiles
   const colL = Math.floor(x          / ts);
   const colR = Math.floor((x + pw - 1) / ts);
   const rowT = Math.floor(py          / ts);
@@ -110,7 +110,24 @@ function resolveAABBVsTiles(lvl, px, py, pvx, pvy, pw, ph, dt) {
     if (vx < 0 && isSolid(lvl, colL, r)) { x = (colL + 1) * ts;    vx = 0; break; }
   }
 
-  // Vertical
+  // Horizontal vs Closed Gates
+  if (lvl.activeGates) {
+    for (const g of lvl.activeGates) {
+      if (!g.open) {
+        if (py + ph > g.y + 4 && py < g.y + g.h - 4) {
+          if (vx > 0 && px + pw <= g.x + 4 && x + pw > g.x) {
+            x = g.x - pw;
+            vx = 0;
+          } else if (vx < 0 && px >= g.x + g.w - 4 && x < g.x + g.w) {
+            x = g.x + g.w;
+            vx = 0;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Vertical vs Tiles
   const colL2 = Math.floor(x          / ts);
   const colR2 = Math.floor((x + pw - 1) / ts);
   const rowT2 = Math.floor(y          / ts);
@@ -118,6 +135,36 @@ function resolveAABBVsTiles(lvl, px, py, pvx, pvy, pw, ph, dt) {
   for (let c = colL2; c <= colR2; c++) {
     if (vy > 0 && isSolid(lvl, c, rowB2)) { y = rowB2 * ts - ph; vy = 0; onGround = true; break; }
     if (vy < 0 && isSolid(lvl, c, rowT2)) { y = (rowT2 + 1) * ts; vy = 0; break; }
+  }
+
+  // Vertical vs Active Bridges (solid surface for players and boxes)
+  if (lvl.activeBridges) {
+    for (const brg of lvl.activeBridges) {
+      if (brg.active) {
+        if (x + pw > brg.x + 2 && x < brg.x + brg.w - 2) {
+          if (vy >= 0 && py + ph <= brg.y + 12 && y + ph >= brg.y) {
+            y = brg.y - ph;
+            vy = 0;
+            onGround = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Vertical vs Closed Gates (landing on top of a closed gate)
+  if (lvl.activeGates) {
+    for (const g of lvl.activeGates) {
+      if (!g.open) {
+        if (x + pw > g.x + 2 && x < g.x + g.w - 2) {
+          if (vy >= 0 && py + ph <= g.y + 12 && y + ph >= g.y) {
+            y = g.y - ph;
+            vy = 0;
+            onGround = true;
+          }
+        }
+      }
+    }
   }
 
   // World bounds
@@ -395,24 +442,34 @@ function updateBoxes(lvl, dt) {
   // 3. Solid collision kotak terhadap pemain & pembawaan gerak pemain
   lvl.activeBoxes.forEach(box => {
     pArr.forEach(p => {
-      // Jika menaiki kotak, bawa pemain ikut bergeser bersama kotak
-      const onTop = p.x + p.w > box.x &&
-                    p.x < box.x + box.w &&
-                    Math.abs((p.y + p.h) - box.y) <= 8;
-      if (onTop && box.deltaX) {
-        p.x += box.deltaX;
-      }
+      // 1. Pemain berdiri di atas kotak
+      const onTop = p.x + p.w > box.x + 2 &&
+                    p.x < box.x + box.w - 2 &&
+                    p.y + p.h >= box.y - 4 &&
+                    p.y + p.h <= box.y + 14 &&
+                    p.vy >= 0;
+      if (onTop) {
+        p.y = box.y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+        if (box.deltaX) p.x += box.deltaX;
+      } else {
+        // 2. Pemain di samping kotak: TIDAK BISA MENEMBUS KOTAK
+        const dx = (p.x + p.w / 2) - (box.x + box.w / 2);
+        const dy = (p.y + p.h / 2) - (box.y + box.h / 2);
+        const ox = (p.w / 2 + box.w / 2) - Math.abs(dx);
+        const oy = (p.h / 2 + box.h / 2) - Math.abs(dy);
 
-      // Halangi pemain menembus sisi kotak
-      const dx = (p.x + p.w / 2) - (box.x + box.w / 2);
-      const dy = (p.y + p.h / 2) - (box.y + box.h / 2);
-      const ox = (p.w / 2 + box.w / 2) - Math.abs(dx);
-      const oy = (p.h / 2 + box.h / 2) - Math.abs(dy);
-
-      if (ox > 0 && oy > 0) {
-        if (p.y + p.h > box.y + 12) {
-          if (dx > 0) p.x = box.x + box.w;
-          else        p.x = box.x - p.w;
+        if (ox > 0 && oy > 0) {
+          if (p.y + p.h > box.y + 8) {
+            if (dx > 0) {
+              p.x = box.x + box.w;
+              if (p.vx < 0) p.vx = 0;
+            } else {
+              p.x = box.x - p.w;
+              if (p.vx > 0) p.vx = 0;
+            }
+          }
         }
       }
     });
@@ -572,27 +629,92 @@ function updateGates(lvl) {
   });
 }
 
-// ─── Dynamic Lasers Physics (Level 5 Hazard DDS) ─────────────────────────────
+// ─── Dynamic Lasers Physics (Level 5 Hazard & Dual-Shield Co-op) ────────────
 function updateLasers(lvl) {
   if (!lvl.activeLasers || lvl.activeLasers.length === 0) return;
   const pArr = Object.values(players);
 
   lvl.activeLasers.forEach(laser => {
-    // Laser mati jika tombol kontrolnya ditekan ATAU kunci sudah berhasil diambil
+    // 1. Jika Kunci sudah diambil, seluruh laser otomatis mati!
+    if (keyCollected) {
+      laser.isBlocked = true;
+      laser.blockedByShield = false;
+      return;
+    }
+
+    // 2. Tombol kontrol (jika level menggunakan tombol deaktifasi laser)
     const matchingBtn = (lvl.activeButtons || []).find(b => b.laserIndex === laser.index);
     const isBtnPressed = matchingBtn ? matchingBtn.pressed : false;
 
-    laser.isBlocked = isBtnPressed || keyCollected;
+    // 3. Deteksi Perisai Pemain (Dual-Shield Co-op):
+    //    Player 1: Top Shield (di atas kepala) -> Menahan laser vertikal langit-langit
+    //    Player 2: Front Shield (di depan badan) -> Menahan laser horizontal
+    let blockedByShield = false;
+    let cutRight  = laser.x + laser.w;
+    let cutBottom = laser.y + laser.h;
 
-    // Jika laser menyala (hazard aktif), periksa tabrakan mematikan dengan pemain
-    if (laser.active && !laser.isBlocked) {
+    const isHorizontal = laser.orientation === 'horizontal';
+    const isVertical   = laser.orientation === 'vertical' || !laser.orientation;
+
+    pArr.forEach(p => {
+      // 🛡️ FRONT SHIELD: Menahan Laser Horizontal!
+      if (p.shieldType === 'front' && isHorizontal) {
+        const facing = p.facing || 1;
+        const sX = (facing === 1) ? p.x + p.w - 4 : p.x - 14;
+        const sY = p.y - 8;
+        const sW = 18;
+        const sH = p.h + 16;
+
+        if (sX + sW > laser.x && sX < laser.x + laser.w &&
+            sY + sH > laser.y && sY < laser.y + laser.h) {
+          blockedByShield = true;
+          cutRight = Math.min(cutRight, sX + (facing === 1 ? 6 : sW));
+        }
+      }
+
+      // 🛡️ TOP SHIELD: Menahan Laser Vertikal!
+      if (p.shieldType === 'top' && isVertical) {
+        const sX = p.x - 12;
+        const sY = p.y - 14;
+        const sW = p.w + 24;
+        const sH = 16;
+
+        if (sX + sW > laser.x && sX < laser.x + laser.w &&
+            sY + sH > laser.y && sY < laser.y + laser.h) {
+          blockedByShield = true;
+          cutBottom = Math.min(cutBottom, sY + 4);
+        }
+      }
+    });
+
+    laser.blockedByShield = blockedByShield;
+    laser.isBlocked = isBtnPressed || (isHorizontal && blockedByShield);
+    laser.cutRight  = cutRight;
+    laser.cutBottom = cutBottom;
+
+    // 4. Tabrakan mematikan terhadap pemain yang tidak terlindungi perisai
+    if (laser.active && !isBtnPressed && !keyCollected) {
       pArr.forEach((p, idx) => {
-        const hit = p.x + p.w > laser.x &&
-                    p.x       < laser.x + laser.w &&
-                    p.y + p.h > laser.y &&
-                    p.y       < laser.y + laser.h;
+        // Pemain pembawa perisai depan kebal terhadap laser horizontal yang ia tahan
+        if (p.shieldType === 'front' && isHorizontal && blockedByShield) {
+          return;
+        }
+        // Pemain pembawa perisai atas kebal terhadap laser vertikal yang ia tahan
+        if (p.shieldType === 'top' && isVertical && blockedByShield) {
+          return;
+        }
+
+        // Cek tabrakan dengan bagian laser yang aktif
+        let hit = false;
+        if (isHorizontal) {
+          hit = p.x + p.w > laser.x && p.x < cutRight &&
+                p.y + p.h > laser.y + 2 && p.y < laser.y + laser.h - 2;
+        } else {
+          hit = p.x + p.w > laser.x + 2 && p.x < laser.x + laser.w - 2 &&
+                p.y + p.h > laser.y && p.y < cutBottom;
+        }
+
         if (hit) {
-          // Pemain terkena laser: respawn di spawn point
           const sp = lvl.spawns[idx] || { x: 60, y: 500 };
           p.x = sp.x;
           p.y = sp.y;
@@ -679,9 +801,9 @@ function physicsTick() {
 
   // 1. Update pergerakan pemain (Input + Gravitasi + Ubin)
   Object.values(players).forEach(p => {
-    if (p.keys.left)       p.vx = -PLAYER_SPEED;
-    else if (p.keys.right) p.vx =  PLAYER_SPEED;
-    else                   p.vx = 0;
+    if (p.keys.left)       { p.vx = -PLAYER_SPEED; p.facing = -1; }
+    else if (p.keys.right) { p.vx =  PLAYER_SPEED; p.facing =  1; }
+    else                   { p.vx = 0; }
 
     if (p.keys.up && p.onGround) {
       p.vy = JUMP_VELOCITY;
@@ -765,18 +887,19 @@ function physicsTick() {
     }
   }
 
-  // 11. Broadcast snapshot ke semua client (termasuk camX, lasers, springboards)
+  // 11. Broadcast snapshot ke semua client (termasuk camX, lasers, springboards, shields)
   const snapshot = Object.values(players).map(p => ({
-    id       : p.id,
-    name     : p.name,
-    color    : p.color,
-    colorName: p.colorName,
-    x        : Math.round(p.x),
-    y        : Math.round(p.y),
-    onGround : p.onGround,
-    hasKey   : p.hasKey,
-    atDoor   : p.atDoor,
-    facing   : p.vx < 0 ? -1 : 1,
+    id        : p.id,
+    name      : p.name,
+    color     : p.color,
+    colorName : p.colorName,
+    x         : Math.round(p.x),
+    y         : Math.round(p.y),
+    onGround  : p.onGround,
+    hasKey    : p.hasKey,
+    atDoor    : p.atDoor,
+    facing    : p.facing || (p.vx < 0 ? -1 : 1),
+    shieldType: p.shieldType || null,
   }));
 
   io.emit('gameState', {
@@ -806,16 +929,29 @@ function startLevel() {
   // Inisialisasi entitas dengan skala kesulitan dinamis berdasarkan playerCount
   initLevelEntities(lvl, pCount);
 
-  // Reset posisi pemain ke titik spawn
+  // Reset posisi pemain ke titik spawn & set Shield Co-op jika Level 5
   Object.values(players).forEach((pl, i) => {
     const sp = lvl.spawns[i] || { x: 60, y: 500 };
     pl.x        = sp.x;
     pl.y        = sp.y;
     pl.vx       = 0;
     pl.vy       = 0;
+    pl.facing   = 1;
     pl.onGround = false;
     pl.atDoor   = false;
     pl.hasKey   = false;
+
+    // 🛡️ Level 5 Dual-Shield Co-op:
+    // Pemain 1: Pelindung Atas Kepala (Top Shield)
+    // Pemain 2: Pelindung Depan Badan (Front Shield)
+    // Pemain 3-5: Escort (berlindung di payung perlindungan P1 & P2)
+    if (lvl.id === 5) {
+      if (i === 0)      pl.shieldType = 'top';
+      else if (i === 1) pl.shieldType = 'front';
+      else              pl.shieldType = null;
+    } else {
+      pl.shieldType = null;
+    }
   });
 
   io.emit('gameStarted', {
