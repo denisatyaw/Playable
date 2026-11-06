@@ -5,6 +5,7 @@ const level2 = require('./level2');
 const level3 = require('./level3');
 const level4 = require('./level4');
 const level5 = require('./level5');
+const level11 = require('./level11');
 
 module.exports = [
   level1,
@@ -12,5 +13,5 @@ module.exports = [
   level3,
   level4,
   level5,
+  level11,
 ];
-

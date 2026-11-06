@@ -15,6 +15,7 @@ const ALL_LEVELS = [
   { id: 8, idx: 7, name: 'Moving Ferry',      icon: '🚢', tag: 'Electric Ferry',    desc: 'Menyeberang di atas platform gerak sempit.',       unlocked: false },
   { id: 9, idx: 8, name: 'Trap Switch',       icon: '🔀', tag: 'Dual Paths',        desc: 'Koordinasi jalur atas & tombol bawah.',            unlocked: false },
   { id: 10, idx: 9, name: 'Final Exam',       icon: '🏆', tag: 'The Grand Finale',  desc: 'Ujian puncak seluruh puzzle kerja sama.',          unlocked: false },
+  { id: 11, idx: 10, name: 'The Great Divide', icon: '🏹', tag: 'Human Slingshot',   desc: 'Lontarkan kawan melintasi jurang maut dengan ketapel manusia!', unlocked: true },
 ];
 
 // ─── DOM References ──────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ let currentBridges      = [];
 let currentGates        = [];
 let currentLasers       = [];
 let currentSpringboards = [];
+let currentSlingshot    = null;
 
 // Shared Viewport Camera (Pico Park scrolling)
 const VIEW_W        = 1200;
@@ -134,6 +136,7 @@ function resetToLobby() {
   currentBridges      = [];
   currentLasers       = [];
   currentSpringboards = [];
+  currentSlingshot    = null;
   currentCamX         = 0;
   renderCamX          = 0;
 
@@ -223,7 +226,7 @@ function renderLevelGrid() {
 
       selectedLevelIdx = lvl.idx;
       renderLevelGrid();
-      socket.emit('selectLevel', { levelIdx: lvl.idx });
+      socket.emit('selectLevel', { levelIdx: lvl.idx, levelId: lvl.id });
     });
 
     levelGrid.appendChild(card);
@@ -371,18 +374,21 @@ socket.on('lobbyUpdate', ({ players }) => {
   }
 });
 
-socket.on('levelSelected', ({ levelIdx, levelName }) => {
-  selectedLevelIdx = levelIdx;
+socket.on('levelSelected', ({ levelIdx, levelId, levelName }) => {
+  const match = ALL_LEVELS.find(l => (levelId !== undefined ? l.id === levelId : l.idx === levelIdx));
+  if (match) selectedLevelIdx = match.idx;
+  else selectedLevelIdx = levelIdx;
   renderLevelGrid();
   showGameNotif(`Host memilih: ${levelName}`);
 });
 
-socket.on('gameStarted', ({ level, playerCount: pCount }) => {
-  currentLevel = level;
-  keyCollected = false;
-  currentCamX  = 0;
-  renderCamX   = 0;
-  currentGates = level.activeGates || [];
+socket.on('gameStarted', ({ level, playerCount: pCount, slingshot }) => {
+  currentLevel        = level;
+  keyCollected        = false;
+  currentCamX         = 0;
+  renderCamX          = 0;
+  currentGates        = level.activeGates || [];
+  currentSlingshot    = slingshot || null;
   resizeCanvas();
 
   hudLevel.textContent     = level.name;
@@ -392,6 +398,8 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   if (hudDDS) {
     if (level.id === 5) {
       hudDDS.textContent = '🛡️ Dual-Shield Co-op: P1 (Top Shield) & P2 (Front Shield)';
+    } else if (level.id === 11) {
+      hudDDS.textContent = `🏹 Ketapel Manusia: Jurang 1320px | Skala ${pCount - 1} Tombol Ledge`;
     } else {
       hudDDS.textContent = `⚙ DDS: ${pCount} Pemain (Skala ${pCount - 1}x)`;
     }
@@ -407,7 +415,7 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   }
 });
 
-socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, gates, lasers, springboards, camX }) => {
+socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, gates, lasers, springboards, slingshot, camX }) => {
   lastSnapshot        = players;
   keyCollected        = kc;
   currentBoxes        = boxes || [];
@@ -416,6 +424,7 @@ socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, ga
   currentGates        = gates || [];
   currentLasers       = lasers || [];
   currentSpringboards = springboards || [];
+  currentSlingshot    = slingshot || null;
   currentCamX         = camX || 0;
 
   hudPlayers.textContent = `👥 ${players.length} Pemain`;
@@ -423,6 +432,12 @@ socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, ga
     hudKeyStatus.textContent = '🔑 Kunci: Berhasil Diambil!';
     hudKeyStatus.classList.add('collected');
   }
+});
+
+socket.on('slingshotFired', ({ tension }) => {
+  showGameNotif(`🚀 WUSSHHH! Rekanmu terlontar melintasi jurang (${Math.round(tension * 100)}% Daya)!`);
+  canvas.style.transform = 'translateY(-5px)';
+  setTimeout(() => { canvas.style.transform = ''; }, 120);
 });
 
 socket.on('keyCollected', () => {
@@ -510,6 +525,7 @@ function renderLoop() {
   drawButtons();
   drawSpringboards();
   drawLasers();
+  drawSlingshot();
   drawBoxes();
   drawKey();
   drawDoor();
@@ -760,7 +776,7 @@ function drawLasers() {
 
   currentLasers.forEach(laser => {
     const isHorizontal = laser.orientation === 'horizontal';
-    const isOff = keyCollected;
+    const isOff = keyCollected || laser.isBlocked || !laser.active;
     const isShielded = laser.blockedByShield;
 
     const lx = laser.x;
@@ -882,6 +898,196 @@ function drawSpringboards() {
     ctx.textAlign = 'center';
     ctx.fillText('▲ TRAMPOLIN ▲', sb.x + sb.w / 2, sb.y - 8);
   });
+}
+
+// ── Slingshot (Ketapel Manusia Co-op - Level 11) ─────────────────────────────
+function drawSlingshot() {
+  const sling = currentSlingshot;
+  if (!sling) return;
+
+  const { x, y, w, h, pouchX, pouchY, maxTension, tension, ammoId, launcherId } = sling;
+  const isDark = document.body.classList.contains('dark-theme');
+
+  const tensionRatio = Math.min(1, Math.max(0, (tension || 0) / (maxTension || 3.0)));
+  const stretchOffset = tensionRatio * 44;
+
+  const forkLeftX  = x + 10;
+  const forkRightX = x + w - 10;
+  const forkTopY   = y + 8;
+  const pouchCurX  = pouchX - stretchOffset;
+  const pouchCurY  = pouchY - 14;
+
+  ctx.save();
+
+  // 1. Dotted Parabolic Trajectory Preview (ketika tension > 0)
+  if (tensionRatio > 0.05) {
+    ctx.save();
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 6]);
+    ctx.strokeStyle = `rgba(249, 115, 22, ${0.4 + tensionRatio * 0.5})`;
+
+    const previewVx = 800 + tensionRatio * 1050;
+    const previewVy = -(750 + tensionRatio * 500);
+    const g = 1800;
+
+    ctx.beginPath();
+    ctx.moveTo(pouchCurX, pouchCurY);
+    for (let t = 0.05; t <= 1.4; t += 0.04) {
+      const px = pouchCurX + previewVx * t;
+      const py = pouchCurY + previewVy * t + 0.5 * g * t * t;
+      if (py > 580) break;
+      ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 2. Karet Ketapel Belakang (Rubber Band)
+  ctx.save();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = tensionRatio > 0.7 ? '#ef4444' : '#f97316';
+  ctx.shadowColor = tensionRatio > 0.7 ? '#ef4444' : '#f97316';
+  ctx.shadowBlur  = tensionRatio > 0 ? 8 : 0;
+  ctx.beginPath();
+  ctx.moveTo(forkLeftX, forkTopY);
+  ctx.lineTo(pouchCurX, pouchCurY);
+  ctx.stroke();
+  ctx.restore();
+
+  // 3. Tiang Garpu Kayu Y-Post Ketapel
+  ctx.save();
+  // Bayangan tiang di lantai
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + h + 2, 24, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tiang utama tegak
+  const woodGrad = ctx.createLinearGradient(x, y, x + w, y);
+  woodGrad.addColorStop(0, '#854d0e');
+  woodGrad.addColorStop(0.5, '#a16207');
+  woodGrad.addColorStop(1, '#713f12');
+
+  ctx.fillStyle = woodGrad;
+  ctx.strokeStyle = '#451a03';
+  ctx.lineWidth = 2.5;
+
+  // Batang bawah
+  roundRect(ctx, x + w / 2 - 8, y + 28, 16, h - 28, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Garpu Kiri
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2 - 6, y + 34);
+  ctx.lineTo(forkLeftX, forkTopY);
+  ctx.lineTo(forkLeftX - 6, forkTopY);
+  ctx.lineTo(x + w / 2 - 12, y + 36);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Garpu Kanan
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2 + 6, y + 34);
+  ctx.lineTo(forkRightX, forkTopY);
+  ctx.lineTo(forkRightX + 6, forkTopY);
+  ctx.lineTo(x + w / 2 + 12, y + 36);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Ujung pengait kulit garpu
+  ctx.fillStyle = '#b45309';
+  ctx.beginPath();
+  ctx.arc(forkLeftX, forkTopY, 5, 0, Math.PI * 2);
+  ctx.arc(forkRightX, forkTopY, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // 4. Karet Ketapel Depan & Kantong Kulit (Pouch)
+  ctx.save();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = tensionRatio > 0.7 ? '#ef4444' : '#f97316';
+  ctx.shadowColor = tensionRatio > 0.7 ? '#ef4444' : '#f97316';
+  ctx.shadowBlur  = tensionRatio > 0 ? 8 : 0;
+  ctx.beginPath();
+  ctx.moveTo(forkRightX, forkTopY);
+  ctx.lineTo(pouchCurX, pouchCurY);
+  ctx.stroke();
+
+  // Kantong Kulit Pouch
+  ctx.fillStyle = '#451a03';
+  ctx.strokeStyle = '#78350f';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(pouchCurX, pouchCurY, 8, 14, -0.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // 5. Visual Hints & Tension Gauge UI
+  if (!ammoId) {
+    const bob = Math.sin(Date.now() / 250) * 4;
+    ctx.save();
+    ctx.fillStyle = isDark ? '#38bdf8' : '#0284c7';
+    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.5)';
+    ctx.shadowBlur = 4;
+    ctx.fillText('🏹 KANTONG KETAPEL', pouchX, y - 16 + bob);
+    ctx.fillText('▼ MASUK SINI ▼', pouchX, y - 4 + bob);
+    ctx.restore();
+  } else if (!launcherId || tensionRatio === 0) {
+    const bob = Math.sin(Date.now() / 200) * 3;
+    ctx.save();
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = 'bold 11px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 4;
+    ctx.fillText('⚡ PELURU SIAP!', pouchCurX, y - 24 + bob);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 10px Segoe UI, sans-serif';
+    ctx.fillText('Rekan di belakang tahan [A / ←] Tarik!', pouchCurX, y - 12 + bob);
+    ctx.restore();
+  } else {
+    // TENSION GAUGE BAR (Indikator Daya Lontar 0 - 100%)
+    const barW = 100;
+    const barH = 12;
+    const barX = pouchCurX - barW / 2;
+    const barY = y - 36;
+    const pct  = Math.round(tensionRatio * 100);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, barX, barY, barW, barH, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    const fillW = Math.max(0, (barW - 4) * tensionRatio);
+    const barGrad = ctx.createLinearGradient(barX, barY, barX + barW, barY);
+    barGrad.addColorStop(0, '#facc15');
+    barGrad.addColorStop(0.6, '#f97316');
+    barGrad.addColorStop(1, '#ef4444');
+
+    ctx.fillStyle = barGrad;
+    roundRect(ctx, barX + 2, barY + 2, fillW, barH - 4, 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`DAYA ${pct}% (LEPAS [A] UNTUK TEMBAK!)`, pouchCurX, barY - 6);
+    ctx.restore();
+  }
+
+  ctx.restore();
 }
 
 // ── Dynamic Heavy Boxes (DDS) ────────────────────────────────────────────────
@@ -1085,6 +1291,15 @@ function drawPlayer(p) {
     ctx.font      = 'bold 11px Segoe UI';
     ctx.textAlign = 'center';
     ctx.fillText('✓ SIAP', x + W / 2, y - 32);
+  }
+
+  if (p.isAmmo) {
+    ctx.save();
+    ctx.fillStyle = '#f97316';
+    ctx.font      = 'bold 9px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏹 PELURU', x + W / 2, y - (atDoor ? 42 : 32));
+    ctx.restore();
   }
 
   // 🛡️ DUAL-SHIELD CO-OP RENDERING (Level 5)

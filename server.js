@@ -209,7 +209,7 @@ function initLevelEntities(lvl, pCount) {
     gateId    : btn.gateId,
     label     : btn.label,
     laserIndex: btn.laserIndex,
-    active    : btn.isLatch || btn.gateId ? true : (idx < reqButtons),
+    active    : btn.isLatch || btn.gateId || btn.laserIndex !== undefined ? true : (idx < reqButtons),
     pressed   : false,
     latched   : false,
   }));
@@ -268,6 +268,20 @@ function initLevelEntities(lvl, pCount) {
 
   // 8. Reset Kamera Bersama
   lvl.camX = 0;
+
+  // 9. Slingshot (Ketapel Manusia)
+  if (lvl.slingshot) {
+    lvl.activeSlingshot = {
+      ...lvl.slingshot,
+      ammoId    : null,
+      launcherId: null,
+      tension   : 0,
+      isPulling : false,
+      cooldown  : 0,
+    };
+  } else {
+    lvl.activeSlingshot = null;
+  }
 }
 
 // ─── Player–Player Collisions (FIXED: Bebas Lengket & Magnet) ────────────────
@@ -283,6 +297,9 @@ function resolvePlayerCollisions(lvl) {
 
       const overlapX = (a.w / 2 + b.w / 2) - Math.abs(dx);
       const overlapY = (a.h / 2 + b.h / 2) - Math.abs(dy);
+
+      // Jangan tabrakkan jika salah satu pemain sedang menjadi peluru di kantong ketapel
+      if (a.isAmmo || b.isAmmo) continue;
 
       // KUNCI: AABB strict positif! Jika tidak ada tumpang-tindih di kedua sumbu, TIDAK ADA TABRAKAN!
       if (overlapX <= 0 || overlapY <= 0) {
@@ -554,6 +571,9 @@ function updateButtonsAndBridges(lvl) {
         // Tombol yang se-grup dengan jembatan ini
         const grpBtns = lvl.activeButtons.filter(b => b.group === brg.group && b.active && !b.isLatch);
         const grpAllPressed = grpBtns.length > 0 && grpBtns.every(b => b.pressed);
+        if (grpAllPressed) {
+          brg.latched = true; // Jembatan mengunci aktif setelah seluruh kawan menginjak tombol
+        }
         isPowered = grpAllPressed || brg.latched || keyCollected;
       } else {
         const activeBtns = lvl.activeButtons.filter(b => b.active && !b.isLatch);
@@ -644,7 +664,7 @@ function updateLasers(lvl) {
 
     // 2. Tombol kontrol (jika level menggunakan tombol deaktifasi laser)
     const matchingBtn = (lvl.activeButtons || []).find(b => b.laserIndex === laser.index);
-    const isBtnPressed = matchingBtn ? matchingBtn.pressed : false;
+    const isBtnPressed = matchingBtn ? (matchingBtn.pressed || matchingBtn.latched) : false;
 
     // 3. Deteksi Perisai Pemain (Dual-Shield Co-op):
     //    Player 1: Top Shield (di atas kepala) -> Menahan laser vertikal langit-langit
@@ -693,23 +713,31 @@ function updateLasers(lvl) {
     laser.cutBottom = cutBottom;
 
     // 4. Tabrakan mematikan terhadap pemain yang tidak terlindungi perisai
-    if (laser.active && !isBtnPressed && !keyCollected) {
+    if (laser.active && !isBtnPressed && !laser.isBlocked && !keyCollected) {
       pArr.forEach((p, idx) => {
-        // Pemain pembawa perisai depan kebal terhadap laser horizontal yang ia tahan
-        if (p.shieldType === 'front' && isHorizontal && blockedByShield) {
-          return;
+        // Pemain pembawa perisai depan kebal terhadap laser horizontal
+        if (p.shieldType === 'front' && isHorizontal) return;
+        // Pemain pembawa perisai atas kebal terhadap laser vertikal
+        if (p.shieldType === 'top' && isVertical) return;
+
+        // Escort Co-op: Teammates terlindungi saat berjalan bersama rekan pembawa perisai
+        if (isHorizontal) {
+          const frontBearer = pArr.find(pl => pl.shieldType === 'front');
+          if (frontBearer && Math.abs(p.x - frontBearer.x) < 80 && Math.abs(p.y - frontBearer.y) < 60) return;
         }
-        // Pemain pembawa perisai atas kebal terhadap laser vertikal yang ia tahan
-        if (p.shieldType === 'top' && isVertical && blockedByShield) {
-          return;
+        if (isVertical && blockedByShield) {
+          const topBearer = pArr.find(pl => pl.shieldType === 'top');
+          if (topBearer && Math.abs(p.x - topBearer.x) < 60 && p.y >= topBearer.y - 12) return;
         }
 
         // Cek tabrakan dengan bagian laser yang aktif
         let hit = false;
         if (isHorizontal) {
-          hit = p.x + p.w > laser.x && p.x < cutRight &&
+          // Jika laser horizontal tidak sedang diblokir perisai depan
+          hit = p.x + p.w > laser.x && p.x < laser.x + laser.w &&
                 p.y + p.h > laser.y + 2 && p.y < laser.y + laser.h - 2;
         } else {
+          // Laser vertikal: hanya mematikan jika berada di atas pelindung atas
           hit = p.x + p.w > laser.x + 2 && p.x < laser.x + laser.w - 2 &&
                 p.y + p.h > laser.y && p.y < cutBottom;
         }
@@ -751,10 +779,144 @@ function updateSpringboards(lvl) {
   });
 }
 
+// ─── Slingshot Physics (Ketapel Manusia Co-op - Level 11) ────────────────────
+function updateSlingshot(lvl, dt) {
+  const sling = lvl.activeSlingshot;
+  if (!sling) return;
+  const pArr = Object.values(players);
+
+  if (sling.cooldown > 0) {
+    sling.cooldown = Math.max(0, sling.cooldown - dt);
+  }
+
+  // 1. Cek keberadaan ammo player (jika diskonek, lepas status)
+  if (sling.ammoId && !players[sling.ammoId]) {
+    sling.ammoId = null;
+    sling.tension = 0;
+    sling.isPulling = false;
+    sling.launcherId = null;
+  }
+
+  // 2. Deteksi pemain masuk ke dalam kantong ketapel (State 'Ammo')
+  if (!sling.ammoId && sling.cooldown <= 0) {
+    for (const p of pArr) {
+      const inPouch = Math.abs((p.x + p.w / 2) - sling.pouchX) < 28 &&
+                      Math.abs((p.y + p.h) - sling.pouchY) < 32;
+      if (inPouch && !p.isAmmo) {
+        sling.ammoId = p.id;
+        sling.tension = 0;
+        sling.isPulling = false;
+        sling.launcherId = null;
+        p.isAmmo = true;
+        break;
+      }
+    }
+  }
+
+  const ammoPlayer = sling.ammoId ? players[sling.ammoId] : null;
+
+  // 3. Jika ada Ammo player di kantong:
+  if (ammoPlayer) {
+    ammoPlayer.isAmmo = true;
+    ammoPlayer.onGround = false;
+
+    // Rekan di belakang (State 'Launcher'):
+    let activeLauncher = null;
+    for (const p of pArr) {
+      if (p.id === ammoPlayer.id) continue;
+      const isBehind = p.x <= sling.x + 20 && p.x >= sling.x - 140 &&
+                       Math.abs(p.y - ammoPlayer.y) < 60;
+      if (isBehind) {
+        activeLauncher = p;
+        break;
+      }
+    }
+
+    if (activeLauncher) {
+      sling.launcherId = activeLauncher.id;
+
+      // Pemain B menekan dan menahan tombol mundur (kiri [A / ←]) untuk menarik ketapel
+      if (activeLauncher.keys.left) {
+        sling.isPulling = true;
+        sling.tension = Math.min(sling.maxTension, sling.tension + dt);
+      } else if (sling.isPulling) {
+        // 🚀 SAAT DILEPAS: PARABOLIC LAUNCH!
+        const tensionRatio = Math.max(0.12, sling.tension / sling.maxTension);
+
+        // Formula parabola terkalibrasi:
+        // vx = 800 + T * 1050 (px/s ke kanan)
+        // vy = -(750 + T * 500) (px/s ke atas, lalu melengkung oleh gravitasi 1800 px/s²)
+        const launchVx = 800 + tensionRatio * 1050;
+        const launchVy = -(750 + tensionRatio * 500);
+
+        ammoPlayer.vx = launchVx;
+        ammoPlayer.vy = launchVy;
+        ammoPlayer.isAmmo = false;
+        ammoPlayer.facing = 1;
+        ammoPlayer.onGround = false;
+
+        sling.ammoId = null;
+        sling.launcherId = null;
+        sling.tension = 0;
+        sling.isPulling = false;
+        sling.cooldown = 0.6;
+
+        io.emit('slingshotFired', { tension: tensionRatio, vx: launchVx, vy: launchVy });
+      } else {
+        sling.tension = Math.max(0, sling.tension - dt * 2);
+      }
+    } else {
+      // Tidak ada launcher di belakang
+      sling.launcherId = null;
+      sling.isPulling = false;
+      sling.tension = Math.max(0, sling.tension - dt * 2);
+
+      // Jika ammo menekan tombol lompat (W / Space / Up), izinkan keluar dari kantong
+      if (ammoPlayer.keys.up && sling.tension === 0) {
+        ammoPlayer.vy = -450;
+        ammoPlayer.isAmmo = false;
+        sling.ammoId = null;
+        sling.cooldown = 0.5;
+      }
+    }
+
+    // Kunci posisi ammo di kantong (tertarik mundur sesuai tension)
+    if (sling.ammoId === ammoPlayer.id) {
+      const stretchOffset = (sling.tension / sling.maxTension) * 44;
+      ammoPlayer.x = sling.pouchX - ammoPlayer.w / 2 - stretchOffset;
+      ammoPlayer.y = sling.pouchY - ammoPlayer.h;
+      ammoPlayer.vx = 0;
+      ammoPlayer.vy = 0;
+    }
+  } else {
+    sling.tension = 0;
+    sling.isPulling = false;
+    sling.launcherId = null;
+  }
+}
+
 // ─── Shared Viewport Camera & Screen Constraint (Pico Park Style) ────────────
 function updateCameraAndConstraints(lvl) {
   const pArr = Object.values(players);
   if (pArr.length === 0) return;
+
+  // Di Level 11 (The Great Divide), pemain dilontarkan menyeberang jurang jauh (1320 px).
+  // Kamera fokus mengikuti kawan yang dilontarkan atau pusat tim tanpa mengunci batas tepi layar!
+  if (lvl.id === 11) {
+    const launched = pArr.find(p => p.vx > 300);
+    let targetX = 0;
+    if (launched) {
+      targetX = launched.x - VIEW_W / 2;
+    } else {
+      const minX = Math.min(...pArr.map(p => p.x));
+      const maxX = Math.max(...pArr.map(p => p.x + p.w));
+      targetX = ((minX + maxX) / 2) - VIEW_W / 2;
+    }
+    targetX = Math.max(0, Math.min(lvl.worldW - VIEW_W, targetX));
+    if (lvl.camX === undefined) lvl.camX = targetX;
+    else lvl.camX += (targetX - lvl.camX) * 0.14;
+    return;
+  }
 
   const minX = Math.min(...pArr.map(p => p.x));
   const maxX = Math.max(...pArr.map(p => p.x + p.w));
@@ -801,6 +963,10 @@ function physicsTick() {
 
   // 1. Update pergerakan pemain (Input + Gravitasi + Ubin)
   Object.values(players).forEach(p => {
+    if (p.isAmmo) {
+      // Pemain terkunci di kantong ketapel manusia
+      return;
+    }
     if (p.keys.left)       { p.vx = -PLAYER_SPEED; p.facing = -1; }
     else if (p.keys.right) { p.vx =  PLAYER_SPEED; p.facing =  1; }
     else                   { p.vx = 0; }
@@ -831,6 +997,9 @@ function physicsTick() {
   // 6. Update Springboards (Bantalan Lompat Level 4 & 5)
   updateSpringboards(lvl);
 
+  // 6b. Update Slingshot (Ketapel Manusia Co-op - Level 11)
+  updateSlingshot(lvl, dt);
+
   // 7. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
   resolvePlayerCollisions(lvl);
 
@@ -846,6 +1015,12 @@ function physicsTick() {
       p.vx = 0;
       p.vy = 0;
       p.onGround = false;
+      p.isAmmo = false;
+      if (lvl.activeSlingshot && lvl.activeSlingshot.ammoId === p.id) {
+        lvl.activeSlingshot.ammoId = null;
+        lvl.activeSlingshot.tension = 0;
+        lvl.activeSlingshot.isPulling = false;
+      }
     }
   });
 
@@ -900,6 +1075,7 @@ function physicsTick() {
     atDoor    : p.atDoor,
     facing    : p.facing || (p.vx < 0 ? -1 : 1),
     shieldType: p.shieldType || null,
+    isAmmo    : !!p.isAmmo,
   }));
 
   io.emit('gameState', {
@@ -914,6 +1090,7 @@ function physicsTick() {
     gates       : lvl.activeGates || [],
     lasers      : lvl.activeLasers || [],
     springboards: lvl.activeSpringboards || [],
+    slingshot   : lvl.activeSlingshot ? { ...lvl.activeSlingshot } : null,
   });
 }
 
@@ -959,6 +1136,7 @@ function startLevel() {
     playerCount: pCount,
     levelIdx   : currentLevelIdx,
     totalLevels: LEVELS.length,
+    slingshot  : lvl.activeSlingshot ? { ...lvl.activeSlingshot } : null,
   });
 
   console.log(`[+] Started Level ${lvl.id}: "${lvl.name}" (Players: ${pCount})`);
@@ -1006,16 +1184,23 @@ io.on('connection', socket => {
     }
   });
 
-  socket.on('selectLevel', ({ levelIdx }) => {
+  socket.on('selectLevel', ({ levelIdx, levelId }) => {
     const p = players[socket.id];
     if (!p || !p.isHost) return;
-    if (typeof levelIdx === 'number' && levelIdx >= 0 && levelIdx < LEVELS.length) {
+    if (levelId !== undefined) {
+      const foundIdx = LEVELS.findIndex(l => l && l.id === levelId);
+      if (foundIdx !== -1) currentLevelIdx = foundIdx;
+    } else if (typeof levelIdx === 'number' && levelIdx >= 0 && levelIdx < LEVELS.length) {
       currentLevelIdx = levelIdx;
-      if (gameState === 'playing') {
-        startLevel();
-      } else {
-        io.emit('levelSelected', { levelIdx: currentLevelIdx, levelName: LEVELS[currentLevelIdx].name });
-      }
+    }
+    if (gameState === 'playing') {
+      startLevel();
+    } else {
+      io.emit('levelSelected', {
+        levelIdx : currentLevelIdx,
+        levelId  : LEVELS[currentLevelIdx].id,
+        levelName: LEVELS[currentLevelIdx].name,
+      });
     }
   });
 

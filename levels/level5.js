@@ -9,11 +9,11 @@
 //   Menahan laser horizontal yang memotong di sepanjang lantai.
 // SINERGI SALING MELENGKAPI:
 // - Saat ada laser horizontal, Pemain 2 berjalan di depan menahan sinar.
-// - Saat ada laser vertikal, Pemain 1 berjalan melindungi bagian atas.
-// - Di zona gabungan, Pemain 1 MENUMPUK di atas kepala Pemain 2:
-//   Pemain 1 menahan atas + Pemain 2 menahan depan = Unit Tank Sempurna!
+//   Sinar yang tertahan dinonaktifkan sehingga kawan di belakang dapat menyeberang aman!
+// - Di seberang laser terdapat tombol terminal untuk mematikan laser permanen bagi seluruh tim.
+// - Di zona gabungan, kawan saling menempel atau bertumpuk badan untuk melewati rintangan bersama!
 // JALAN KELUAR PASTI:
-// Di ujung koridor (x: 1840) terdapat Kunci Emas.
+// Di ujung koridor (x: 1850) terdapat Kunci Emas.
 // Begitu Kunci disentuh: SELURUH LASER MATI PERMANEN!
 // Tepat di depan (x: 2040) terdapat PINTU KELUAR yang langsung terbuka lebar!
 
@@ -56,69 +56,80 @@ module.exports = {
   doorH: 72,
   // Rangkaian Laser Sinergi
   lasers: [
-    // 1. Zona Front Shield: Laser Horizontal lantai (x: 440 s/d 780)
+    // 1. Zona Front Shield: Laser Horizontal lantai (x: 440 s/d 660)
     {
       id         : 'laser_h1',
+      index      : 0,
       orientation: 'horizontal',
       x          : 440,
       y          : 520,
-      w          : 340,
+      w          : 220,
       h          : 16,
       active     : true,
     },
-    // 2. Zona Top Shield: Laser Vertikal Langit-Langit #1 (x: 960)
+    // 2. Zona Top Shield: Laser Vertikal Langit-Langit #1 (x: 880)
     {
       id         : 'laser_v1',
+      index      : 1,
       orientation: 'vertical',
-      x          : 960,
+      x          : 880,
       y          : 160,
       w          : 16,
       h          : 400,
       active     : true,
     },
-    // 3. Zona Top Shield: Laser Vertikal Langit-Langit #2 (x: 1160)
+    // 3. Zona Top Shield: Laser Vertikal Langit-Langit #2 (x: 1080)
     {
       id         : 'laser_v2',
+      index      : 2,
       orientation: 'vertical',
-      x          : 1160,
+      x          : 1080,
       y          : 160,
       w          : 16,
       h          : 400,
       active     : true,
     },
-    // 4. Zona Gauntlet Gabungan: Laser Horizontal Lantai #2 (x: 1380 s/d 1740)
+    // 4. Zona Gauntlet Gabungan: Laser Horizontal Lantai #2 (x: 1320 s/d 1560)
     {
       id         : 'laser_h2',
+      index      : 3,
       orientation: 'horizontal',
-      x          : 1380,
+      x          : 1320,
       y          : 520,
-      w          : 360,
+      w          : 240,
       h          : 16,
       active     : true,
     },
-    // 5. Zona Gauntlet Gabungan: Laser Vertikal Atas #3 (x: 1520)
+    // 5. Zona Gauntlet Gabungan: Laser Vertikal Atas #3 (x: 1440)
     {
       id         : 'laser_v3',
+      index      : 4,
       orientation: 'vertical',
-      x          : 1520,
+      x          : 1440,
       y          : 160,
       w          : 16,
       h          : 400,
       active     : true,
     },
-    // 6. Zona Gauntlet Gabungan: Laser Vertikal Atas #4 (x: 1680)
+    // 6. Zona Gauntlet Gabungan: Laser Vertikal Atas #4 (x: 1620)
     {
       id         : 'laser_v4',
+      index      : 5,
       orientation: 'vertical',
-      x          : 1680,
+      x          : 1620,
       y          : 160,
       w          : 16,
       h          : 400,
       active     : true,
     },
   ],
+  // Tombol Terminal untuk mematikan laser permanen setelah berhasil dilewati perisai
+  buttons: [
+    { id: 'btn_off_h1', x: 720,  y: 546, w: 42, h: 14, isLatch: true, laserIndex: 0, label: 'MATIKAN LASER #1' },
+    { id: 'btn_off_v1', x: 1160, y: 546, w: 42, h: 14, isLatch: true, laserIndex: 1, label: 'MATIKAN LASER #2' },
+    { id: 'btn_off_v2', x: 1220, y: 546, w: 42, h: 14, isLatch: true, laserIndex: 2, label: 'MATIKAN LASER #3' },
+  ],
   boxes       : [],
-  buttons     : [],
   bridges     : [],
   gates       : [],
   springboards: [],
