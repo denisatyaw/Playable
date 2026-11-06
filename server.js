@@ -53,6 +53,8 @@ function buildPlayerPhysics(spawnIdx) {
     vx      : 0,
     vy      : 0,
     onGround: false,
+    isAmmo  : false,
+    isLaunched: false,
     w       : PLAYER_W,
     h       : PLAYER_H,
     keys    : { left: false, right: false, up: false, down: false },
@@ -171,11 +173,38 @@ function resolveAABBVsTiles(lvl, px, py, pvx, pvy, pw, ph, dt) {
     }
   }
 
-  // World bounds
+  // Vertical vs Moving Platforms (landing on top)
+  if (lvl.activeMovingPlatforms) {
+    for (const mp of lvl.activeMovingPlatforms) {
+      if (x + pw > mp.x + 2 && x < mp.x + mp.w - 2) {
+        if (vy >= 0 && py + ph <= mp.y + 12 && y + ph >= mp.y) {
+          y = mp.y - ph;
+          vy = 0;
+          onGround = true;
+        }
+      }
+    }
+  }
+
+  // Vertical vs Invisible Platforms (solid hitbox)
+  if (lvl.activeInvisiblePlatforms) {
+    for (const ip of lvl.activeInvisiblePlatforms) {
+      if (x + pw > ip.x + 2 && x < ip.x + ip.w - 2) {
+        if (vy >= 0 && py + ph <= ip.y + 12 && y + ph >= ip.y) {
+          y = ip.y - ph;
+          vy = 0;
+          onGround = true;
+        }
+      }
+    }
+  }
+
+  // World bounds (Horizontal & Plafon)
   if (x < 0)                    { x = 0;               vx = 0; }
   if (x + pw > lvl.worldW)      { x = lvl.worldW - pw; vx = 0; }
-  if (y + ph > lvl.worldH)      { y = lvl.worldH - ph; vy = 0; onGround = true; }
   if (y < 0)                    { y = 0;               vy = 0; }
+  // JANGAN kancing y di worldH agar pemain yang jatuh ke jurang maut
+  // benar-benar jatuh ke bawah dan memicu respawn ke titik checkpoint aman!
 
   return { x, y, vx, vy, onGround };
 }
@@ -201,38 +230,58 @@ function initLevelEntities(lvl, pCount) {
 
   // 2. Dynamic Buttons (Multi-Buttons DDS: butuh playerCount - 1 tombol)
   const reqButtons = Math.max(1, pCount - 1);
-  lvl.activeButtons = (lvl.buttons || []).map((btn, idx) => ({
-    id        : btn.id,
-    x         : btn.x,
-    y         : btn.y,
-    w         : btn.w,
-    h         : btn.h,
-    index     : btn.index !== undefined ? btn.index : idx,
-    group     : btn.group,
-    isLatch   : !!btn.isLatch,
-    gateId    : btn.gateId,
-    label     : btn.label,
-    laserIndex: btn.laserIndex,
-    active    : btn.isLatch || btn.gateId || btn.laserIndex !== undefined ? true : (idx < reqButtons),
-    pressed   : false,
-    latched   : false,
-  }));
+  lvl.activeButtons = (lvl.buttons || []).map((btn, idx) => {
+    let active = false;
+    if (btn.isLatch || btn.gateId || btn.laserIndex !== undefined) {
+      active = true;
+    } else if (btn.minPlayers) {
+      active = pCount >= btn.minPlayers;
+    } else {
+      active = idx < reqButtons;
+    }
+    return {
+      id        : btn.id,
+      x         : btn.x,
+      y         : btn.y,
+      w         : btn.w,
+      h         : btn.h,
+      index     : btn.index !== undefined ? btn.index : idx,
+      group     : btn.group,
+      minPlayers: btn.minPlayers,
+      isLatch   : !!btn.isLatch,
+      gateId    : btn.gateId,
+      label     : btn.label,
+      laserIndex: btn.laserIndex,
+      active    : active,
+      pressed   : false,
+      latched   : false,
+    };
+  });
 
   // 3. Dynamic Bridges (Bridge DDS)
-  lvl.activeBridges = (lvl.bridges || []).map(brg => ({
-    id     : brg.id,
-    x      : brg.x,
-    y      : brg.y,
-    w      : brg.w,
-    h      : brg.h,
-    group  : brg.group,
-    active : false,
-    latched: false,
-  }));
+  lvl.activeBridges = (lvl.bridges || []).map(brg => {
+    let initiallyLatched = false;
+    if (brg.minPlayers && pCount < brg.minPlayers) {
+      initiallyLatched = true; // Auto-terbuka jika jumlah pemain lebih sedikit dari syarat rintangan
+    }
+    return {
+      id        : brg.id,
+      x         : brg.x,
+      y         : brg.y,
+      w         : brg.w,
+      h         : brg.h,
+      group     : brg.group,
+      minPlayers: brg.minPlayers,
+      active    : initiallyLatched,
+      latched   : initiallyLatched,
+    };
+  });
 
-  // 4. Dynamic Lasers (Laser Grid DDS: lapis laser = playerCount - 1)
+  // 4. Dynamic Lasers & Color Lasers (Laser Grid DDS)
   const reqLasers = Math.max(1, pCount - 1);
-  lvl.activeLasers = (lvl.lasers || []).map((l, idx) => ({
+  const activeColors = Object.values(players).map(p => (p.color || '').toLowerCase());
+
+  const stdLasers = (lvl.lasers || []).map((l, idx) => ({
     id         : l.id,
     x          : l.x,
     y          : l.y,
@@ -241,7 +290,23 @@ function initLevelEntities(lvl, pCount) {
     orientation: l.orientation || 'vertical',
     index      : l.index !== undefined ? l.index : idx,
     active     : l.active !== undefined ? l.active : (idx < reqLasers),
+    color      : l.color || null,
   }));
+
+  const colLasers = (lvl.colorLasers || []).map((cl, idx) => ({
+    id         : cl.id,
+    x          : cl.x,
+    y          : cl.y,
+    w          : cl.w,
+    h          : cl.h,
+    orientation: cl.orientation || 'vertical',
+    index      : cl.laserIndex !== undefined ? cl.laserIndex : (cl.index !== undefined ? cl.index : (100 + idx)),
+    // DDS: Laser warna HANYA aktif jika warnanya sesuai karakter yang ada di room!
+    active     : activeColors.length > 0 ? activeColors.includes((cl.color || '').toLowerCase()) : true,
+    color      : cl.color,
+  }));
+
+  lvl.activeLasers = [...stdLasers, ...colLasers];
 
   // 5. Dynamic Springboards (Bantalan Lompat)
   lvl.activeSpringboards = (lvl.springboards || []).map(sb => ({
@@ -288,6 +353,73 @@ function initLevelEntities(lvl, pCount) {
   } else {
     lvl.activeSlingshot = null;
   }
+
+  // 10. Dynamic Moving Platforms (Level 8 Ferry)
+  lvl.activeMovingPlatforms = (lvl.movingPlatforms || []).map(mp => {
+    const w = mp.wFormula ? mp.wFormula(pCount) : mp.w;
+    return {
+      id    : mp.id,
+      x     : mp.x,
+      y     : mp.y,
+      w     : w,
+      h     : mp.h || 18,
+      minX  : mp.minX,
+      maxX  : mp.maxX,
+      minY  : mp.minY,
+      maxY  : mp.maxY,
+      speed : mp.speed || 80,
+      dir   : mp.dir || 1,
+      deltaX: 0,
+      label : mp.label || 'FERI PENGANGKUT',
+    };
+  });
+
+  // 11. Seesaws (Timbangan)
+  lvl.activeSeesaws = (lvl.seesaws || []).map(s => ({
+    ...s,
+    angle     : 0,
+    angularVel: 0,
+  }));
+
+  // 12. Color Lasers (DDS: aktif sesuai warna pemain aktif)
+  lvl.activeColorLasers = (lvl.colorLasers || []).map((cl, idx) => ({
+    ...cl,
+    index : idx,
+    active: activeColors.length > 0 ? activeColors.includes((cl.color || '').toLowerCase()) : true,
+  }));
+
+  // 13. Torches (Darkness & Obor)
+  lvl.activeTorches = (lvl.torches || []).map(t => ({
+    id      : t.id,
+    x       : t.x,
+    y       : t.y,
+    holderId: null,
+  }));
+
+  // 14. Generator Wheels (Roda Hamster)
+  lvl.activeGeneratorWheels = (lvl.generatorWheels || []).map(gw => {
+    const req = gw.reqRunnersFormula ? gw.reqRunnersFormula(pCount) : (gw.reqRunners || 1);
+    return {
+      ...gw,
+      reqRunners    : req,
+      power         : 0,
+      rotation      : 0,
+      currentRunners: 0,
+    };
+  });
+
+  // 15. Invisible Platforms (Lantai Ilusi Solid)
+  lvl.activeInvisiblePlatforms = (lvl.invisiblePlatforms || []).map(ip => ({
+    ...ip,
+    isRevealed: false,
+  }));
+
+  // 16. Compactor Wall (Dinding Bergeser)
+  lvl.activeCompactorWall = lvl.compactorWall ? {
+    ...lvl.compactorWall,
+    currentX: lvl.compactorWall.x || 0,
+    active  : true,
+  } : null;
 }
 
 // ─── Player–Player Collisions & Tower Stacking (Pico Park Style) ──────────────
@@ -758,6 +890,11 @@ function updateLasers(lvl) {
     // 4. Tabrakan mematikan terhadap pemain yang tidak terlindungi perisai
     if (laser.active && !isBtnPressed && !laser.isBlocked && !keyCollected) {
       pArr.forEach((p, idx) => {
+        // Color Lasers: Collision diabaikan (tembus aman) jika warna pemain SAMA dengan warna laser!
+        if (laser.color && p.color && p.color.toLowerCase() === laser.color.toLowerCase()) {
+          return;
+        }
+
         // Pemain pembawa perisai depan kebal terhadap laser horizontal
         if (p.shieldType === 'front' && isHorizontal) return;
         // Pemain pembawa perisai atas kebal terhadap laser vertikal
@@ -787,8 +924,14 @@ function updateLasers(lvl) {
 
         if (hit) {
           const sp = lvl.spawns[idx] || { x: 60, y: 500 };
-          p.x = sp.x;
-          p.y = sp.y;
+          const respawnX = p.lastSafeX !== undefined ? p.lastSafeX : sp.x;
+          const respawnY = p.lastSafeY !== undefined ? p.lastSafeY : sp.y;
+          p.x = respawnX;
+          p.y = respawnY;
+          p.prevX = respawnX;
+          p.prevY = respawnY;
+          p.deltaX = 0;
+          p.standingOnId = null;
           p.vx = 0;
           p.vy = 0;
           p.onGround = false;
@@ -851,6 +994,7 @@ function updateSlingshot(lvl, dt) {
         sling.isPulling = false;
         sling.launcherId = null;
         p.isAmmo = true;
+        p.isLaunched = false;
         break;
       }
     }
@@ -863,84 +1007,22 @@ function updateSlingshot(lvl, dt) {
     ammoPlayer.isAmmo = true;
     ammoPlayer.onGround = false;
 
-    // Rekan di belakang (State 'Launcher'):
-    let activeLauncher = null;
-    for (const p of pArr) {
-      if (p.id === ammoPlayer.id) continue;
-      const isBehind = p.x <= sling.x + 20 && p.x >= sling.x - 140 &&
-                       Math.abs(p.y - ammoPlayer.y) < 60;
-      if (isBehind) {
-        activeLauncher = p;
-        break;
-      }
+    // Jika ammo menekan tombol lompat (W / Space / Up) saat ketapel belum ditarik, izinkan keluar
+    if (ammoPlayer.keys.up && (sling.tension === 0 || !sling.isPulling)) {
+      ammoPlayer.vy = -450;
+      ammoPlayer.isAmmo = false;
+      ammoPlayer.isLaunched = false;
+      sling.ammoId = null;
+      sling.cooldown = 0.5;
     }
 
-    if (activeLauncher) {
-      sling.launcherId = activeLauncher.id;
-
-      // 1. Atur Sudut Lontar (Aim Angle) via Keyboard (W/S atau Panah Atas/Bawah) atau Mouse
-      if (typeof activeLauncher.aimAngle === 'number') {
-        sling.angle = activeLauncher.aimAngle;
-      } else {
-        if (activeLauncher.keys.up) {
-          sling.angle = Math.min(1.31, (sling.angle || 0.785) + dt * 0.9); // Maksimal ~75 derajat
-        }
-        if (activeLauncher.keys.down) {
-          sling.angle = Math.max(0.26, (sling.angle || 0.785) - dt * 0.9); // Minimal ~15 derajat
-        }
-      }
-      if (sling.angle === undefined) sling.angle = 0.785;
-
-      // 2. Tarik ketapel dengan menahan tombol mundur (kiri [A / ←])
-      if (activeLauncher.keys.left) {
-        sling.isPulling = true;
-        sling.tension = Math.min(sling.maxTension, sling.tension + dt);
-      } else if (sling.isPulling) {
-        // 🚀 SAAT DILEPAS: PARABOLIC LAUNCH SESUAI SUDUT & TENSION!
-        const tensionRatio = Math.max(0.12, sling.tension / sling.maxTension);
-
-        // Kecepatan peluru terkalibrasi:
-        const speed = 950 + tensionRatio * 1150;
-        const launchVx = speed * Math.cos(sling.angle);
-        const launchVy = -speed * Math.sin(sling.angle);
-
-        ammoPlayer.vx = launchVx;
-        ammoPlayer.vy = launchVy;
-        ammoPlayer.isAmmo = false;
-        ammoPlayer.facing = 1;
-        ammoPlayer.onGround = false;
-
-        sling.ammoId = null;
-        sling.launcherId = null;
-        sling.tension = 0;
-        sling.isPulling = false;
-        sling.cooldown = 0.6;
-
-        io.emit('slingshotFired', { tension: tensionRatio, angle: sling.angle, vx: launchVx, vy: launchVy });
-      } else {
-        sling.tension = Math.max(0, sling.tension - dt * 2);
-      }
-    } else {
-      // Tidak ada launcher di belakang
-      sling.launcherId = null;
-      sling.isPulling = false;
-      sling.tension = Math.max(0, sling.tension - dt * 2);
-
-      // Jika ammo menekan tombol lompat (W / Space / Up), izinkan keluar dari kantong
-      if (ammoPlayer.keys.up && sling.tension === 0) {
-        ammoPlayer.vy = -450;
-        ammoPlayer.isAmmo = false;
-        sling.ammoId = null;
-        sling.cooldown = 0.5;
-      }
-    }
-
-    // Kunci posisi ammo di kantong (tertarik mundur sesuai sudut dan tension)
+    // Kunci posisi ammo di kantong ketapel (mengikuti peregangan karet)
     if (sling.ammoId === ammoPlayer.id) {
-      const stretchOffset = (sling.tension / sling.maxTension) * 44;
+      const tensionRatio = Math.min(1.0, (sling.tension || 0) / (sling.maxTension || 3.0));
+      const stretchOffset = tensionRatio * 52;
       const angle = sling.angle || 0.785;
       ammoPlayer.x = sling.pouchX - ammoPlayer.w / 2 - Math.cos(angle) * stretchOffset;
-      ammoPlayer.y = sling.pouchY - ammoPlayer.h + Math.sin(angle) * (stretchOffset * 0.5);
+      ammoPlayer.y = sling.pouchY - ammoPlayer.h + Math.sin(angle) * (stretchOffset * 0.6);
       ammoPlayer.vx = 0;
       ammoPlayer.vy = 0;
     }
@@ -951,18 +1033,304 @@ function updateSlingshot(lvl, dt) {
   }
 }
 
+// ─── Moving Platforms Physics (Level 8 Moving Ferry) ─────────────────────────
+function updateMovingPlatforms(lvl, dt) {
+  if (!lvl.activeMovingPlatforms || lvl.activeMovingPlatforms.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeMovingPlatforms.forEach(mp => {
+    const prevX = mp.x;
+    mp.x += mp.speed * mp.dir * dt;
+    if (mp.x >= mp.maxX) {
+      mp.x = mp.maxX;
+      mp.dir = -1;
+    } else if (mp.x <= mp.minX) {
+      mp.x = mp.minX;
+      mp.dir = 1;
+    }
+    mp.deltaX = mp.x - prevX;
+
+    // Solid platform & carries standing players
+    pArr.forEach(p => {
+      if (p.isAmmo) return;
+      const onPlatform = (
+        p.x + p.w > mp.x + 2 &&
+        p.x < mp.x + mp.w - 2 &&
+        p.y + p.h >= mp.y - 6 &&
+        p.y + p.h <= mp.y + 14 &&
+        p.vy >= 0
+      );
+      if (onPlatform) {
+        p.y = mp.y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+        p.x += mp.deltaX;
+        p.deltaX = (p.deltaX || 0) + mp.deltaX;
+        p.x = Math.max(0, Math.min(lvl.worldW - p.w, p.x));
+      }
+    });
+  });
+}
+
+// ─── Seesaw Physics (Level 12 The Balance) ────────────────────────────────────
+function updateSeesaws(lvl, dt) {
+  if (!lvl.activeSeesaws || lvl.activeSeesaws.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeSeesaws.forEach(sw => {
+    let torque = 0;
+    const maxA = sw.maxAngle || 0.32; // ~18.3 derajat
+    const curA = sw.angle || 0;
+    const halfL = sw.length / 2;
+
+    pArr.forEach(p => {
+      if (p.isAmmo) return;
+      const px = p.x + p.w / 2;
+      const py = p.y + p.h;
+      const dx = px - sw.pivotX;
+
+      // Cek apakah pemain berada di atas bentang papan timbangan
+      if (Math.abs(dx) <= halfL + 6) {
+        const plankY = sw.pivotY + Math.sin(curA) * dx;
+        if (py >= plankY - 8 && py <= plankY + 16 && p.vy >= 0) {
+          p.y = plankY - p.h;
+          p.vy = 0;
+          p.onGround = true;
+
+          // Torsi: jarak dari poros * massa
+          torque += dx * 1.6;
+
+          // Efek Merosot (Slide) jika kemiringan curam (> 9.5 derajat = 0.165 rad)
+          if (Math.abs(curA) > 0.165) {
+            const slideForce = Math.sin(curA) * 360;
+            p.vx += slideForce * dt;
+          }
+        }
+      }
+    });
+
+    // Fisika rotasi dengan inersia dan peredaman (damping)
+    const angularAcc = torque * 0.00045 - (sw.angularVel || 0) * 4.0;
+    sw.angularVel = (sw.angularVel || 0) + angularAcc * dt;
+    sw.angle = curA + sw.angularVel * dt;
+
+    // Batasi sudut maksimal
+    if (sw.angle > maxA) {
+      sw.angle = maxA;
+      sw.angularVel = 0;
+    } else if (sw.angle < -maxA) {
+      sw.angle = -maxA;
+      sw.angularVel = 0;
+    }
+  });
+}
+
+// ─── Generator Wheels (Level 16 & 20 Hamster Power) ──────────────────────────
+function updateGeneratorWheels(lvl, dt) {
+  if (!lvl.activeGeneratorWheels || lvl.activeGeneratorWheels.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeGeneratorWheels.forEach(gw => {
+    let runners = 0;
+    const r = gw.radius || 48;
+
+    pArr.forEach(p => {
+      const px = p.x + p.w / 2;
+      const py = p.y + p.h / 2;
+      if (Math.hypot(px - gw.x, py - gw.y) <= r + 4) {
+        if (p.keys.right || p.keys.left) {
+          runners++;
+        }
+      }
+    });
+
+    gw.currentRunners = runners;
+    const req = gw.reqRunners || 1;
+
+    if (runners >= req) {
+      gw.power = Math.min(100, (gw.power || 0) + (40 * (runners / req)) * dt);
+      gw.rotation = ((gw.rotation || 0) + 4.0 * dt) % (Math.PI * 2);
+    } else if (runners > 0) {
+      gw.power = Math.min(100, (gw.power || 0) + (20 * (runners / req)) * dt);
+      gw.rotation = ((gw.rotation || 0) + 2.0 * dt) % (Math.PI * 2);
+    } else {
+      gw.power = Math.max(0, (gw.power || 0) - 12 * dt);
+    }
+
+    // Aktifkan jembatan / elevator yang terhubung
+    if (gw.targetType === 'bridge' && lvl.activeBridges) {
+      const brg = lvl.activeBridges.find(b => b.id === gw.targetId);
+      if (brg) {
+        brg.active = gw.power >= 25 || keyCollected;
+      }
+    }
+    if (gw.targetType === 'elevator' && lvl.activeMovingPlatforms) {
+      const elev = lvl.activeMovingPlatforms.find(m => m.id === gw.targetId);
+      if (elev && elev.minY !== undefined && elev.maxY !== undefined) {
+        const ratio = (gw.power || 0) / 100;
+        elev.y = elev.maxY - (elev.maxY - elev.minY) * ratio;
+
+        // Bawa pemain yang berdiri di atas elevator naik/turun bersama elevator
+        pArr.forEach(p => {
+          if (p.isAmmo) return;
+          const onElev = (
+            p.x + p.w > elev.x + 2 &&
+            p.x < elev.x + elev.w - 2 &&
+            p.y + p.h >= elev.y - 10 &&
+            p.y + p.h <= elev.y + 20
+          );
+          if (onElev) {
+            p.y = elev.y - p.h;
+            p.vy = 0;
+            p.onGround = true;
+          }
+        });
+      }
+    }
+  });
+}
+
+// ─── Invisible Platforms (Level 17 & 20 Lantai Ilusi) ─────────────────────────
+function updateInvisiblePlatforms(lvl) {
+  if (!lvl.activeInvisiblePlatforms || lvl.activeInvisiblePlatforms.length === 0) return;
+  lvl.activeInvisiblePlatforms.forEach(ip => {
+    let revealed = false;
+    if (ip.revealButtonId && lvl.activeButtons) {
+      const btn = lvl.activeButtons.find(b => b.id === ip.revealButtonId);
+      if (btn && (btn.pressed || btn.latched)) {
+        revealed = true;
+      }
+    }
+    if (ip.revealButtonIds && lvl.activeButtons) {
+      const anyPressed = lvl.activeButtons.some(b => ip.revealButtonIds.includes(b.id) && (b.pressed || b.latched));
+      if (anyPressed) {
+        revealed = true;
+      }
+    }
+    if (ip.revealWithPower && lvl.activeGeneratorWheels) {
+      const gen = lvl.activeGeneratorWheels.find(g => g.id === ip.powerGenId);
+      if (gen && gen.power > 15) {
+        revealed = true;
+      }
+    }
+    if (keyCollected) revealed = true;
+    ip.isRevealed = revealed;
+  });
+}
+
+// ─── Compactor Wall (Level 18 Panic Room) ─────────────────────────────────────
+function updateCompactorWall(lvl, dt) {
+  if (!lvl.activeCompactorWall) return;
+  const cw = lvl.activeCompactorWall;
+  if (!cw.active) return;
+  const pArr = Object.values(players);
+
+  cw.currentX += (cw.speed || 25) * dt;
+
+  pArr.forEach((p, idx) => {
+    if (p.isAmmo) return;
+    const cwRight = cw.currentX + cw.w;
+    if (p.x < cwRight && p.x + p.w > cw.currentX) {
+      p.x = cwRight;
+      p.vx = Math.max(p.vx, cw.speed || 25);
+
+      const tileCol = Math.floor((p.x + p.w + 2) / lvl.tileSize);
+      const tileRow = Math.floor((p.y + p.h / 2) / lvl.tileSize);
+      const isSolidAhead = lvl.tiles[tileRow] && lvl.tiles[tileRow][tileCol] === '1';
+
+      if (isSolidAhead || p.x + p.w >= lvl.worldW) {
+        const sp = lvl.spawns[idx] || { x: 60, y: 500 };
+        const safeX = Math.max(sp.x, cw.currentX + cw.w + 16);
+        p.x = safeX;
+        p.y = sp.y;
+        p.prevX = safeX;
+        p.prevY = sp.y;
+        p.vx = 0;
+        p.vy = 0;
+        p.onGround = false;
+        io.emit('playerVaporized', { id: p.id, name: p.name });
+      }
+    }
+  });
+}
+
+// ─── Torches (Level 15 & 19 Darkness & Obor) ──────────────────────────────────
+function updateTorches(lvl) {
+  if (!lvl.activeTorches || lvl.activeTorches.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeTorches.forEach(t => {
+    if (t.holderId && players[t.holderId]) {
+      const holder = players[t.holderId];
+      t.x = holder.x + holder.w / 2;
+      t.y = holder.y + holder.h / 2 - 8;
+    } else {
+      t.holderId = null;
+      for (const p of pArr) {
+        if (Math.hypot((p.x + p.w / 2) - t.x, (p.y + p.h / 2) - t.y) < 32) {
+          t.holderId = p.id;
+          break;
+        }
+      }
+    }
+  });
+}
+
+// ─── Tethers (Level 14 & 19 Tali Kematian) ────────────────────────────────────
+function updateTethers(lvl, dt) {
+  if (!lvl.hasTether) return;
+  const pArr = Object.values(players);
+  if (pArr.length < 2) return;
+
+  const maxDist = (lvl.tether && lvl.tether.maxDistance) || 165;
+  const stiffness = (lvl.tether && lvl.tether.stiffness) || 280;
+
+  for (let i = 0; i < pArr.length - 1; i++) {
+    const p1 = pArr[i];
+    const p2 = pArr[i + 1];
+
+    const dx = (p2.x + p2.w / 2) - (p1.x + p1.w / 2);
+    const dy = (p2.y + p2.h / 2) - (p1.y + p1.h / 2);
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > maxDist && dist > 0.001) {
+      const stretch = dist - maxDist;
+      const nx = dx / dist;
+      const ny = dy / dist;
+
+      const force = stretch * stiffness;
+      p1.vx += nx * force * dt;
+      p1.vy += ny * force * dt;
+      p2.vx -= nx * force * dt;
+      p2.vy -= ny * force * dt;
+
+      // Tarikan jurang maut: jika rekan jatuh, seret pemain pasangannya ke bawah!
+      if (p1.vy > 250 || p1.y > 540) {
+        p2.vy += Math.max(120, p1.vy * 0.75) * dt * 4;
+        p2.vx += nx * 140 * dt;
+        p2.onGround = false;
+      } else if (p2.vy > 250 || p2.y > 540) {
+        p1.vy += Math.max(120, p2.vy * 0.75) * dt * 4;
+        p1.vx -= nx * 140 * dt;
+        p1.onGround = false;
+      }
+    }
+  }
+}
+
 // ─── Shared Viewport Camera & Screen Constraint (Pico Park Style) ────────────
 function updateCameraAndConstraints(lvl) {
   const pArr = Object.values(players);
   if (pArr.length === 0) return;
 
-  // Di Level 11 (The Great Divide), pemain dilontarkan menyeberang jurang jauh (1320 px).
-  // Kamera fokus mengikuti kawan yang dilontarkan atau pusat tim tanpa mengunci batas tepi layar!
-  if (lvl.id === 11) {
-    const launched = pArr.find(p => p.vx > 300);
+  // Di Level 11 (The Great Divide) atau level tanpa batas layar
+  if (lvl.id === 11 || lvl.noScreenClamp) {
+    const launched = pArr.find(p => p.isLaunched || p.vx > 300);
     let targetX = 0;
     if (launched) {
       targetX = launched.x - VIEW_W / 2;
+    } else if (lvl.activeSlingshot && (lvl.activeSlingshot.ammoId || lvl.activeSlingshot.isPulling)) {
+      targetX = 0;
     } else {
       const minX = Math.min(...pArr.map(p => p.x));
       const maxX = Math.max(...pArr.map(p => p.x + p.w));
@@ -1027,9 +1395,23 @@ function physicsTick() {
       // Pemain terkunci di kantong ketapel manusia
       return;
     }
-    if (p.keys.left)       { p.vx = -PLAYER_SPEED; p.facing = -1; }
-    else if (p.keys.right) { p.vx =  PLAYER_SPEED; p.facing =  1; }
-    else                   { p.vx = 0; }
+
+    if (p.isLaunched) {
+      // 🚀 SEDANG TERBANG DARI LONTARAN KETAPEL (BALLISTIC PARABOLA)
+      // Pertahankan kecepatan horizontal (vx) di udara!
+      if (p.keys.left)       { p.vx = Math.max(-2200, p.vx - dt * 300); p.facing = -1; }
+      else if (p.keys.right) { p.vx = Math.min(2200, p.vx + dt * 300); p.facing = 1; }
+
+      // Jika mendarat di tanah/platform, selesaikan status terbang
+      if (p.onGround) {
+        p.isLaunched = false;
+      }
+    } else {
+      // Gerakan berjalan normal
+      if (p.keys.left)       { p.vx = -PLAYER_SPEED; p.facing = -1; }
+      else if (p.keys.right) { p.vx =  PLAYER_SPEED; p.facing =  1; }
+      else                   { p.vx = 0; }
+    }
 
     if (p.keys.up && p.onGround) {
       p.vy = JUMP_VELOCITY;
@@ -1041,6 +1423,11 @@ function physicsTick() {
 
     const res = resolveAABBVsTiles(lvl, p.x, p.y, p.vx, p.vy, p.w, p.h, dt);
     p.x = res.x; p.y = res.y; p.vx = res.vx; p.vy = res.vy; p.onGround = res.onGround;
+
+    // Jika mendarat di tanah atau menabrak dinding
+    if (p.isLaunched && res.onGround) {
+      p.isLaunched = false;
+    }
 
     p.deltaX = p.x - p.prevX;
   });
@@ -1063,31 +1450,71 @@ function physicsTick() {
   // 6b. Update Slingshot (Ketapel Manusia Co-op - Level 11)
   updateSlingshot(lvl, dt);
 
+  // 6c. Update Moving Platforms (Feri Bergerak - Level 8)
+  updateMovingPlatforms(lvl, dt);
+
+  // 6d. Update Seesaws (Timbangan - Level 12)
+  updateSeesaws(lvl, dt);
+
+  // 6e. Update Generator Wheels (Roda Hamster - Level 16 & 20)
+  updateGeneratorWheels(lvl, dt);
+
+  // 6f. Update Invisible Platforms (Lantai Ilusi - Level 17 & 20)
+  updateInvisiblePlatforms(lvl);
+
+  // 6g. Update Compactor Wall (Dinding Bergeser - Level 18)
+  updateCompactorWall(lvl, dt);
+
+  // 6h. Update Torches (Darkness & Obor - Level 15 & 19)
+  updateTorches(lvl);
+
+  // 6i. Update Tethers (Tali Kematian - Level 14 & 19)
+  updateTethers(lvl, dt);
+
   // 7. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
   resolvePlayerCollisions(lvl);
 
   // 8. Update Kamera Bersama & Batas Layar Tetap (Shared Viewport Constraint)
   updateCameraAndConstraints(lvl);
 
-  // 9. Jurang / Pit Respawn (jika pemain jatuh ke luar arena)
+  // Simpan checkpoint pijakan aman saat pemain berdiri di tanah solid
+  Object.values(players).forEach(p => {
+    if (p.onGround && p.y < lvl.worldH - 60 && !p.isAmmo) {
+      const tileCol = Math.floor((p.x + p.w / 2) / lvl.tileSize);
+      const tileRow = Math.floor((p.y + p.h + 2) / lvl.tileSize);
+      if (lvl.tiles[tileRow] && lvl.tiles[tileRow][tileCol] === '1') {
+        p.lastSafeX = p.x;
+        p.lastSafeY = p.y;
+      }
+    }
+  });
+
+  // 9. Jurang / Pit Respawn (jika pemain jatuh ke luar arena maut di semua level)
   Object.values(players).forEach((p, idx) => {
-    if (p.y > lvl.worldH + 15) {
+    if (p.y > lvl.worldH - 24 || p.y + p.h >= lvl.worldH + 8) {
       const sp = lvl.spawns[idx] || { x: 60, y: 500 };
-      p.x = sp.x;
-      p.y = sp.y;
-      p.prevX = sp.x;
-      p.prevY = sp.y;
+      const respawnX = p.lastSafeX !== undefined ? p.lastSafeX : sp.x;
+      const respawnY = p.lastSafeY !== undefined ? p.lastSafeY : sp.y;
+
+      p.x = respawnX;
+      p.y = respawnY;
+      p.prevX = respawnX;
+      p.prevY = respawnY;
       p.deltaX = 0;
       p.standingOnId = null;
       p.vx = 0;
       p.vy = 0;
       p.onGround = false;
       p.isAmmo = false;
+      p.isLaunched = false;
+
       if (lvl.activeSlingshot && lvl.activeSlingshot.ammoId === p.id) {
         lvl.activeSlingshot.ammoId = null;
         lvl.activeSlingshot.tension = 0;
         lvl.activeSlingshot.isPulling = false;
       }
+
+      io.emit('playerVaporized', { id: p.id, name: p.name });
     }
   });
 
@@ -1158,6 +1585,12 @@ function physicsTick() {
     lasers      : lvl.activeLasers || [],
     springboards: lvl.activeSpringboards || [],
     slingshot   : lvl.activeSlingshot ? { ...lvl.activeSlingshot } : null,
+    movingPlatforms   : lvl.activeMovingPlatforms || [],
+    seesaws           : lvl.activeSeesaws || [],
+    torches           : lvl.activeTorches || [],
+    generatorWheels   : lvl.activeGeneratorWheels || [],
+    invisiblePlatforms: lvl.activeInvisiblePlatforms || [],
+    compactorWall     : lvl.activeCompactorWall ? { ...lvl.activeCompactorWall } : null,
   });
 }
 
@@ -1180,12 +1613,16 @@ function startLevel() {
     pl.y        = sp.y;
     pl.prevX    = sp.x;
     pl.prevY    = sp.y;
+    pl.lastSafeX = sp.x;
+    pl.lastSafeY = sp.y;
     pl.deltaX   = 0;
     pl.standingOnId = null;
     pl.vx       = 0;
     pl.vy       = 0;
     pl.facing   = 1;
     pl.onGround = false;
+    pl.isAmmo   = false;
+    pl.isLaunched = false;
     pl.atDoor   = false;
     pl.hasKey   = false;
 
@@ -1284,16 +1721,64 @@ io.on('connection', socket => {
     io.emit('levelRetryNotification', { by: p.name });
   });
 
-  socket.on('input', ({ left, right, up, down, aimAngle }) => {
+  socket.on('input', ({ left, right, up, down }) => {
     const p = players[socket.id];
     if (!p) return;
     p.keys.left  = !!left;
     p.keys.right = !!right;
     p.keys.up    = !!up;
     p.keys.down  = !!down;
-    if (typeof aimAngle === 'number' && !isNaN(aimAngle)) {
-      p.aimAngle = Math.max(0.26, Math.min(1.31, aimAngle));
+  });
+
+  // ── Ketapel Manusia (Angry Birds Mouse Drag & Launch) ──────────────────────
+  socket.on('slingshotAim', ({ tension, angle, isPulling }) => {
+    const lvl = getLevel();
+    if (!lvl || !lvl.activeSlingshot) return;
+    const sling = lvl.activeSlingshot;
+    if (!sling.ammoId) return;
+
+    sling.isPulling = !!isPulling;
+    if (typeof tension === 'number' && !isNaN(tension)) {
+      sling.tension = Math.max(0, Math.min(sling.maxTension, tension * sling.maxTension));
     }
+    if (typeof angle === 'number' && !isNaN(angle)) {
+      sling.angle = Math.max(0.20, Math.min(1.40, angle));
+    }
+    sling.launcherId = socket.id;
+  });
+
+  socket.on('slingshotLaunch', ({ tension, angle }) => {
+    const lvl = getLevel();
+    if (!lvl || !lvl.activeSlingshot) return;
+    const sling = lvl.activeSlingshot;
+    const ammoId = sling.ammoId;
+    if (!ammoId || !players[ammoId]) return;
+
+    const ammoPlayer = players[ammoId];
+    const finalTension = Math.max(0.12, Math.min(1.0, tension || (sling.tension / sling.maxTension)));
+    const finalAngle = typeof angle === 'number' ? Math.max(0.20, Math.min(1.40, angle)) : (sling.angle || 0.785);
+
+    // Kecepatan peluru terkalibrasi menyeberang jurang (1320 - 2400 px)
+    const speed = 900 + finalTension * 1400;
+    const launchVx = speed * Math.cos(finalAngle);
+    const launchVy = -speed * Math.sin(finalAngle);
+
+    ammoPlayer.x = sling.pouchX - ammoPlayer.w / 2;
+    ammoPlayer.y = sling.pouchY - ammoPlayer.h;
+    ammoPlayer.vx = launchVx;
+    ammoPlayer.vy = launchVy;
+    ammoPlayer.isAmmo = false;
+    ammoPlayer.isLaunched = true;
+    ammoPlayer.facing = 1;
+    ammoPlayer.onGround = false;
+
+    sling.ammoId = null;
+    sling.launcherId = null;
+    sling.tension = 0;
+    sling.isPulling = false;
+    sling.cooldown = 0.6;
+
+    io.emit('slingshotFired', { tension: finalTension, angle: finalAngle, vx: launchVx, vy: launchVy });
   });
 
   // ── Pemain minta keluar dari sesi game (kembali ke lobby sendiri) ──────────

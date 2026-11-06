@@ -98,12 +98,24 @@
         </div>
       </div>
 
+      <!-- 📷 Switch Camera Bar (Khusus Level 11) -->
+      <div id="cam-switcher" class="cam-switcher hidden">
+        <span class="cam-title">📷 Switch Kamera:</span>
+        <button id="cam-btn-slingshot" class="cam-btn active" data-mode="slingshot">🏹 Ketapel (Kiri)</button>
+        <button id="cam-btn-seberang" class="cam-btn" data-mode="seberang">⛰️ Seberang (Kanan)</button>
+        <button id="cam-btn-myplayer" class="cam-btn" data-mode="myPlayer">👤 Karakter Saya</button>
+        <button id="cam-btn-panorama" class="cam-btn" data-mode="panorama">🌐 Panorama Penuh</button>
+        <span class="cam-shortcut">[Tekan C]</span>
+      </div>
+
       <canvas id="game-canvas"></canvas>
 
       <div class="controls-hint">
         <span>⬅ A / ← Gerak Kiri</span>
         <span>➡ D / → Gerak Kanan</span>
         <span>⬆ W / ↑ / Space Lompat</span>
+        <span>🏹 Ketapel: Klik & Tarik Mouse</span>
+        <span>📷 C untuk Switch Kamera</span>
         <span>🔄 R untuk Retry Cepat</span>
       </div>
     </div>

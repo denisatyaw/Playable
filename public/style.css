@@ -603,5 +603,63 @@ html, body {
   margin-top: 8px;
 }
 
+/* ─── Switch Camera Bar (Level 11) ────────────────────────────────────────── */
+.cam-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--bg-hud);
+  border: 1px solid var(--border-color);
+  padding: 6px 14px;
+  border-radius: 30px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
+  animation: fadeIn .3s ease;
+  user-select: none;
+}
+
+.cam-title {
+  font-size: .8rem;
+  font-weight: 800;
+  color: var(--accent-blue);
+  margin-right: 4px;
+}
+
+.cam-btn {
+  background: rgba(2, 132, 199, 0.08);
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  color: var(--text-main);
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.cam-btn:hover {
+  background: rgba(2, 132, 199, 0.18);
+  border-color: var(--accent-blue);
+  transform: translateY(-1px);
+}
+
+.cam-btn.active {
+  background: #0284c7;
+  color: #ffffff;
+  border-color: #0284c7;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.45);
+}
+
+.cam-shortcut {
+  font-size: .72rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.15);
+  padding: 3px 7px;
+  border-radius: 6px;
+  margin-left: 4px;
+}
+
 /* ─── Utility ───────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
