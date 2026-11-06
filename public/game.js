@@ -5,16 +5,16 @@ const socket = io();
 
 // ─── Metadata 10 Level Permainan ─────────────────────────────────────────────
 const ALL_LEVELS = [
-  { id: 1, idx: 0, name: 'First Steps',       icon: '🔑', tag: 'Tutorial Co-op',    desc: 'Lompat bersama & raih kunci pertama.',          unlocked: true },
-  { id: 2, idx: 1, name: 'The Step',          icon: '📦', tag: 'Heavy Box DDS',     desc: 'Dorong peti berat bersama untuk lewati tembok.', unlocked: true },
-  { id: 3, idx: 2, name: 'Hold the Door',     icon: '⚡', tag: 'Multi-Buttons DDS', desc: 'Injak tombol jurang untuk nyalakan jembatan.',  unlocked: true },
-  { id: 4, idx: 3, name: 'Bouncer',           icon: '🦘', tag: 'Springboard Co-op', desc: 'Tumpuk badan di udara setelah terpental.',      unlocked: false },
-  { id: 5, idx: 4, name: 'Sacrifice & Trust', icon: '🚨', tag: 'Laser Corridor',    desc: 'Tahan tombol laser agar kawan bisa lewat.',     unlocked: false },
-  { id: 6, idx: 5, name: 'The Tower',         icon: '🗼', tag: 'Tower Stacking',    desc: 'Tumpuk seluruh badan setinggi menara.',         unlocked: false },
-  { id: 7, idx: 6, name: 'Team Push',         icon: '🪨', tag: 'All Players Push',  desc: 'Dorong batu raksasa bersama seluruh tim.',      unlocked: false },
-  { id: 8, idx: 7, name: 'Moving Ferry',      icon: '🚢', tag: 'Electric Ferry',    desc: 'Menyeberang di atas platform gerak sempit.',    unlocked: false },
-  { id: 9, idx: 8, name: 'Trap Switch',       icon: '🔀', tag: 'Dual Paths',        desc: 'Koordinasi jalur atas & tombol bawah.',         unlocked: false },
-  { id: 10, idx: 9, name: 'Final Exam',       icon: '🏆', tag: 'The Grand Finale',  desc: 'Ujian puncak seluruh puzzle kerja sama.',       unlocked: false },
+  { id: 1, idx: 0, name: 'First Steps',       icon: '🔑', tag: 'Tutorial Co-op',    desc: 'Lompat bersama & raih kunci pertama.',             unlocked: true },
+  { id: 2, idx: 1, name: 'The Step',          icon: '📦', tag: 'Heavy Box DDS',     desc: 'Dorong peti bersama & tumpuk badan lewati tembok.', unlocked: true },
+  { id: 3, idx: 2, name: 'Hold the Door',     icon: '⚡', tag: 'Multi-Buttons DDS', desc: 'Injak tombol jurang untuk nyalakan jembatan ganda.', unlocked: true },
+  { id: 4, idx: 3, name: 'Bouncer',           icon: '🦘', tag: 'Springboard Co-op', desc: 'Lompat dari trampolin & tumpuk badan di udara.',  unlocked: true },
+  { id: 5, idx: 4, name: 'Sacrifice & Trust', icon: '🚨', tag: 'Laser Corridor',    desc: 'Tahan tombol laser agar rekan runner bisa lewat.',  unlocked: true },
+  { id: 6, idx: 5, name: 'The Tower',         icon: '🗼', tag: 'Tower Stacking',    desc: 'Tumpuk seluruh badan setinggi menara.',            unlocked: false },
+  { id: 7, idx: 6, name: 'Team Push',         icon: '🪨', tag: 'All Players Push',  desc: 'Dorong batu raksasa bersama seluruh tim.',         unlocked: false },
+  { id: 8, idx: 7, name: 'Moving Ferry',      icon: '🚢', tag: 'Electric Ferry',    desc: 'Menyeberang di atas platform gerak sempit.',       unlocked: false },
+  { id: 9, idx: 8, name: 'Trap Switch',       icon: '🔀', tag: 'Dual Paths',        desc: 'Koordinasi jalur atas & tombol bawah.',            unlocked: false },
+  { id: 10, idx: 9, name: 'Final Exam',       icon: '🏆', tag: 'The Grand Finale',  desc: 'Ujian puncak seluruh puzzle kerja sama.',          unlocked: false },
 ];
 
 // ─── DOM References ──────────────────────────────────────────────────────────
@@ -65,18 +65,27 @@ let keyCollected     = false;
 let animRunning      = false;
 
 // Dynamic Entities State (DDS)
-let currentBoxes   = [];
-let currentButtons = [];
-let currentBridges = [];
+let currentBoxes        = [];
+let currentButtons      = [];
+let currentBridges      = [];
+let currentLasers       = [];
+let currentSpringboards = [];
+
+// Shared Viewport Camera (Pico Park scrolling)
+const VIEW_W        = 1200;
+const VIEW_H        = 600;
+let currentCamX     = 0;
+let renderCamX      = 0;
 
 // Input tracking
 const keys     = { left: false, right: false, up: false };
 let   lastSent = { left: false, right: false, up: false };
 
 // Animation
-let keyAnim    = 0;
-let energyAnim = 0;
+let keyAnim     = 0;
+let energyAnim  = 0;
 let cloudOffset = 0;
+let laserAnim   = 0;
 
 // ─── Theme Management (Light / Dark) ─────────────────────────────────────────
 function initTheme() {
@@ -115,13 +124,17 @@ function showScreen(name) {
 
 // Reset semua state ke kondisi lobby awal
 function resetToLobby() {
-  currentLevel   = null;
-  lastSnapshot   = null;
-  keyCollected   = false;
-  animRunning    = false;
-  currentBoxes   = [];
-  currentButtons = [];
-  currentBridges = [];
+  currentLevel        = null;
+  lastSnapshot        = null;
+  keyCollected        = false;
+  animRunning         = false;
+  currentBoxes        = [];
+  currentButtons      = [];
+  currentBridges      = [];
+  currentLasers       = [];
+  currentSpringboards = [];
+  currentCamX         = 0;
+  renderCamX          = 0;
 
   btnJoin.disabled = false;
   elName.disabled  = false;
@@ -216,16 +229,15 @@ function renderLevelGrid() {
   });
 }
 
-// ─── Canvas Sizing ───────────────────────────────────────────────────────────
+// ─── Canvas Sizing (Fixed Viewport 1200 x 600) ───────────────────────────────
 function resizeCanvas() {
-  if (!currentLevel) return;
   const maxW   = Math.min(window.innerWidth  - 32, 1200);
   const maxH   = Math.min(window.innerHeight - 130, 600);
-  const scaleX = maxW / currentLevel.worldW;
-  const scaleY = maxH / currentLevel.worldH;
+  const scaleX = maxW / VIEW_W;
+  const scaleY = maxH / VIEW_H;
   const scale  = Math.min(scaleX, scaleY, 1);
-  canvas.width  = Math.floor(currentLevel.worldW * scale);
-  canvas.height = Math.floor(currentLevel.worldH * scale);
+  canvas.width  = Math.floor(VIEW_W * scale);
+  canvas.height = Math.floor(VIEW_H * scale);
   canvas.dataset.scale = scale;
 }
 
@@ -367,6 +379,8 @@ socket.on('levelSelected', ({ levelIdx, levelName }) => {
 socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   currentLevel = level;
   keyCollected = false;
+  currentCamX  = 0;
+  renderCamX   = 0;
   resizeCanvas();
 
   hudLevel.textContent     = level.name;
@@ -387,12 +401,15 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   }
 });
 
-socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges }) => {
-  lastSnapshot   = players;
-  keyCollected   = kc;
-  currentBoxes   = boxes || [];
-  currentButtons = buttons || [];
-  currentBridges = bridges || [];
+socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, lasers, springboards, camX }) => {
+  lastSnapshot        = players;
+  keyCollected        = kc;
+  currentBoxes        = boxes || [];
+  currentButtons      = buttons || [];
+  currentBridges      = bridges || [];
+  currentLasers       = lasers || [];
+  currentSpringboards = springboards || [];
+  currentCamX         = camX || 0;
 
   hudPlayers.textContent = `👥 ${players.length} Pemain`;
   if (kc && !hudKeyStatus.classList.contains('collected')) {
@@ -411,8 +428,13 @@ socket.on('keyCollected', () => {
 
 socket.on('levelRetryNotification', ({ by }) => {
   showGameNotif(`🔄 Level diulang oleh ${by || 'rekan tim'}!`);
-  // Flash halus canvas
   canvas.style.outline = '3px solid #f59e0b';
+  setTimeout(() => { canvas.style.outline = ''; }, 400);
+});
+
+socket.on('playerVaporized', ({ name }) => {
+  showGameNotif(`⚡ ${name || 'Rekan'} terkena rintangan laser!`);
+  canvas.style.outline = '3px solid #ff0033';
   setTimeout(() => { canvas.style.outline = ''; }, 400);
 });
 
@@ -455,20 +477,31 @@ socket.on('playerRoster', ({ players }) => {
 // Inisialisasi awal grid level
 renderLevelGrid();
 
-// ─── Rendering Loop ──────────────────────────────────────────────────────────
+// ─── Rendering Loop (Shared Viewport Camera) ─────────────────────────────────
 function renderLoop() {
   if (!animRunning) return;
   requestAnimationFrame(renderLoop);
   if (!currentLevel || !lastSnapshot) return;
 
+  // Smooth camera interpolation
+  renderCamX += (currentCamX - renderCamX) * 0.2;
+
   const scale = parseFloat(canvas.dataset.scale) || 1;
   ctx.save();
   ctx.scale(scale, scale);
 
-  drawBackground();
+  // Background statis/parallax di layar
+  drawBackground(renderCamX);
+
+  // Geser koordinat dunia berdasarkan posisi kamera!
+  ctx.save();
+  ctx.translate(-renderCamX, 0);
+
   drawTiles();
   drawBridges();
   drawButtons();
+  drawSpringboards();
+  drawLasers();
   drawBoxes();
   drawKey();
   drawDoor();
@@ -476,20 +509,23 @@ function renderLoop() {
   drawDoorProgress();
 
   ctx.restore();
+
+  // Indikator tepi layar (Pico Park Screen Constraint)
+  drawScreenConstraintsIndicator();
+
+  ctx.restore();
 }
 
-// ── Background (Terang / Gelap Adaptif) ───────────────────────────────────────
-function drawBackground() {
-  const { worldW, worldH } = currentLevel;
+// ── Background (Adaptif & Parallax Awan) ──────────────────────────────────────
+function drawBackground(camX) {
   const isDark = document.body.classList.contains('dark-theme');
 
   if (isDark) {
-    // Mode Gelap: Ruang Angkasa dengan Bintang
-    const grad = ctx.createLinearGradient(0, 0, 0, worldH);
+    const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
     grad.addColorStop(0, '#0a0d17');
     grad.addColorStop(1, '#131b2e');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, worldW, worldH);
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
     ctx.fillStyle = 'rgba(255,255,255,0.5)';
     [[80,40],[200,25],[350,60],[500,20],[700,45],[900,30],[1100,55],
@@ -499,37 +535,40 @@ function drawBackground() {
       ctx.fill();
     });
   } else {
-    // Mode Terang: Langit Biru Cerah Segar dengan Awan Mengapung
-    const grad = ctx.createLinearGradient(0, 0, 0, worldH);
+    const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
     grad.addColorStop(0, '#bae6fd');
     grad.addColorStop(0.7, '#e0f2fe');
     grad.addColorStop(1, '#f0f9ff');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, worldW, worldH);
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-    // Animasi Awan Kartun
-    cloudOffset += 0.2;
-    drawCuteClouds(worldW, cloudOffset);
+    cloudOffset += 0.25;
+    drawCuteClouds(camX, cloudOffset);
   }
 }
 
-function drawCuteClouds(worldW, offset) {
+function drawCuteClouds(camX, offset) {
   ctx.save();
   ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
 
   const clouds = [
-    { x: 120, y: 70, s: 40 },
-    { x: 440, y: 50, s: 50 },
-    { x: 780, y: 90, s: 45 },
-    { x: 1050, y: 60, s: 55 }
+    { x: 100, y: 70, s: 44 },
+    { x: 380, y: 45, s: 52 },
+    { x: 680, y: 85, s: 46 },
+    { x: 960, y: 55, s: 50 },
+    { x: 1220, y: 75, s: 48 },
+    { x: 1540, y: 40, s: 54 },
+    { x: 1880, y: 90, s: 42 },
+    { x: 2200, y: 60, s: 52 }
   ];
 
   clouds.forEach(c => {
-    const cx = (c.x + offset) % (worldW + 200) - 100;
+    // Parallax scrolling: awan bergerak lebih lambat dari kamera
+    const screenX = (c.x + offset - camX * 0.3) % (VIEW_W + 300) - 100;
     ctx.beginPath();
-    ctx.arc(cx, c.y, c.s * 0.45, 0, Math.PI * 2);
-    ctx.arc(cx + c.s * 0.35, c.y - c.s * 0.15, c.s * 0.4, 0, Math.PI * 2);
-    ctx.arc(cx + c.s * 0.7, c.y, c.s * 0.35, 0, Math.PI * 2);
+    ctx.arc(screenX, c.y, c.s * 0.45, 0, Math.PI * 2);
+    ctx.arc(screenX + c.s * 0.35, c.y - c.s * 0.15, c.s * 0.4, 0, Math.PI * 2);
+    ctx.arc(screenX + c.s * 0.7, c.y, c.s * 0.35, 0, Math.PI * 2);
     ctx.fill();
   });
 
@@ -548,7 +587,6 @@ function drawTiles() {
       const tx = c * ts, ty = r * ts;
 
       if (isDark) {
-        // Style Mode Gelap
         const tg = ctx.createLinearGradient(tx, ty, tx, ty + ts);
         tg.addColorStop(0, '#2e3856');
         tg.addColorStop(1, '#1c2236');
@@ -562,14 +600,12 @@ function drawTiles() {
         ctx.lineWidth   = 0.5;
         ctx.strokeRect(tx + 0.25, ty + 0.25, ts - 0.5, ts - 0.5);
       } else {
-        // Style Mode Terang: Balok Slate Modern dengan Lis Aksen Biru Cerah
         const tg = ctx.createLinearGradient(tx, ty, tx, ty + ts);
         tg.addColorStop(0, '#475569');
         tg.addColorStop(1, '#334155');
         ctx.fillStyle = tg;
         ctx.fillRect(tx, ty, ts, ts);
 
-        // Lis Aksen Cerah di bagian atas platform
         ctx.fillStyle = '#38bdf8';
         ctx.fillRect(tx, ty, ts, 5);
 
@@ -597,7 +633,6 @@ function drawBridges() {
       roundRect(ctx, brg.x, brg.y, brg.w, brg.h, 4);
       ctx.fill();
 
-      // Pola aliran listrik
       ctx.strokeStyle = 'rgba(255,255,255,0.7)';
       ctx.lineWidth   = 2;
       const step = 28;
@@ -635,30 +670,118 @@ function drawButtons() {
     const h = btn.h - pressOffset;
     const y = btn.y + pressOffset;
 
-    // Base alas tombol
     ctx.fillStyle = '#1e293b';
     roundRect(ctx, btn.x - 2, btn.y + 6, btn.w + 4, btn.h, 3);
     ctx.fill();
 
-    // Plate tombol
     ctx.save();
     if (isPressed) {
       ctx.shadowColor = '#10b981';
       ctx.shadowBlur  = 16;
       ctx.fillStyle   = '#10b981';
     } else {
-      ctx.shadowColor = '#f59e0b';
+      ctx.shadowColor = btn.isLatch ? '#38bdf8' : '#f59e0b';
       ctx.shadowBlur  = 12;
-      ctx.fillStyle   = '#f59e0b';
+      ctx.fillStyle   = btn.isLatch ? '#38bdf8' : '#f59e0b';
     }
     roundRect(ctx, btn.x, y, btn.w, h, 3);
     ctx.fill();
     ctx.restore();
 
-    ctx.fillStyle = isPressed ? '#10b981' : '#f59e0b';
+    ctx.fillStyle = isPressed ? '#10b981' : (btn.isLatch ? '#0284c7' : '#f59e0b');
     ctx.font      = 'bold 10px Segoe UI';
     ctx.textAlign = 'center';
-    ctx.fillText(`BTN #${btn.index + 1}`, btn.x + btn.w / 2, btn.y - 8);
+    const label = btn.isLatch ? '🔒 KAIT' : (btn.laserIndex !== undefined ? `LASER #${btn.laserIndex + 1}` : `BTN #${btn.index + 1}`);
+    ctx.fillText(label, btn.x + btn.w / 2, btn.y - 8);
+  });
+}
+
+// ── Dynamic Lasers (Level 5 Hazard DDS) ───────────────────────────────────────
+function drawLasers() {
+  laserAnim += 0.08;
+
+  currentLasers.forEach(laser => {
+    const isOff = laser.isBlocked || !laser.active;
+
+    // Node emiter atas & bawah
+    ctx.fillStyle = '#1e293b';
+    roundRect(ctx, laser.x - 6, laser.y - 12, laser.w + 12, 14, 4);
+    ctx.fill();
+    roundRect(ctx, laser.x - 6, laser.y + laser.h - 2, laser.w + 12, 14, 4);
+    ctx.fill();
+
+    if (!isOff) {
+      // Sinar laser menyala aktif (Merah Mematikan)
+      ctx.save();
+      const pulse = Math.sin(laserAnim) * 4;
+      ctx.shadowColor = '#ff0033';
+      ctx.shadowBlur  = 22 + pulse;
+
+      // Glow beam
+      ctx.fillStyle = 'rgba(255, 0, 51, 0.75)';
+      ctx.fillRect(laser.x - 1, laser.y, laser.w + 2, laser.h);
+
+      // Core putih bertegangan tinggi
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(laser.x + laser.w / 2 - 2, laser.y, 4, laser.h);
+      ctx.restore();
+
+      // Peringatan bahaya
+      ctx.fillStyle = '#ff0033';
+      ctx.font      = 'bold 9px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚡ BAHAYA', laser.x + laser.w / 2, laser.y - 16);
+    } else {
+      // Laser dinonaktifkan oleh rekan tim yang menahan tombol
+      ctx.save();
+      ctx.setLineDash([4, 6]);
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(laser.x + laser.w / 2, laser.y);
+      ctx.lineTo(laser.x + laser.w / 2, laser.y + laser.h);
+      ctx.stroke();
+
+      ctx.fillStyle = '#10b981';
+      ctx.font      = 'bold 9px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText('✓ AMAN', laser.x + laser.w / 2, laser.y - 16);
+      ctx.restore();
+    }
+  });
+}
+
+// ── Springboards (Level 4 & 5 Bantalan Lompat) ────────────────────────────────
+function drawSpringboards() {
+  currentSpringboards.forEach(sb => {
+    const squashOffset = (sb.squash || 0) * 6;
+
+    // Plat besi bawah
+    ctx.fillStyle = '#1e293b';
+    roundRect(ctx, sb.x - 4, sb.y + sb.h - 4, sb.w + 8, 8, 3);
+    ctx.fill();
+
+    // Pegas per di tengah
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(sb.x + 12, sb.y + sb.h - 4);
+    ctx.lineTo(sb.x + sb.w - 12, sb.y + 4 + squashOffset);
+    ctx.stroke();
+
+    // Pad lompat atas
+    ctx.save();
+    ctx.shadowColor = '#f59e0b';
+    ctx.shadowBlur  = 12;
+    ctx.fillStyle   = '#f59e0b';
+    roundRect(ctx, sb.x, sb.y + squashOffset, sb.w, sb.h - squashOffset, 4);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.fillStyle = '#d97706';
+    ctx.font      = 'bold 9px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.fillText('▲ TRAMPOLIN ▲', sb.x + sb.w / 2, sb.y - 8);
   });
 }
 
@@ -668,13 +791,11 @@ function drawBoxes() {
     const { x, y, w, h, minPushers, currentPushers } = box;
     const isMoving = currentPushers >= minPushers;
 
-    // Drop shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
     ctx.ellipse(x + w / 2, y + h + 3, w / 2.2, 5, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Box body
     ctx.save();
     const bg = ctx.createLinearGradient(x, y, x, y + h);
     bg.addColorStop(0, isMoving ? '#10b981' : '#d97706');
@@ -683,7 +804,6 @@ function drawBoxes() {
     roundRect(ctx, x, y, w, h, 6);
     ctx.fill();
 
-    // Cross braces
     ctx.strokeStyle = '#fff';
     ctx.lineWidth   = 2;
     ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
@@ -694,7 +814,6 @@ function drawBoxes() {
     ctx.lineTo(x + 3, y + h - 3);
     ctx.stroke();
 
-    // Bolts
     ctx.fillStyle = '#fff';
     [[x + 7, y + 7], [x + w - 7, y + 7], [x + 7, y + h - 7], [x + w - 7, y + h - 7]].forEach(([bx, by]) => {
       ctx.beginPath();
@@ -703,7 +822,6 @@ function drawBoxes() {
     });
     ctx.restore();
 
-    // DDS Status Badge
     const badgeW = 100;
     const badgeH = 20;
     const badgeX = x + w / 2 - badgeW / 2;
@@ -812,13 +930,11 @@ function drawPlayer(p) {
   const { x, y, color, name, facing, hasKey, atDoor } = p;
   const W = 36, H = 36;
 
-  // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
   ctx.beginPath();
   ctx.ellipse(x + W / 2, y + H + 3, W / 2.3, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Glow + body
   ctx.save();
   ctx.shadowColor = color;
   ctx.shadowBlur  = 18;
@@ -828,13 +944,11 @@ function drawPlayer(p) {
   ctx.fill();
   ctx.restore();
 
-  // Face shine
   ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.beginPath();
   roundRect(ctx, x + 4, y + 3, W - 8, 10, 6);
   ctx.fill();
 
-  // Eyes
   const eyeY  = y + 13;
   const eyeLX = x + (facing === -1 ? 9  : 10);
   const eyeRX = x + (facing === -1 ? 20 : 21);
@@ -845,21 +959,18 @@ function drawPlayer(p) {
   ctx.beginPath(); ctx.arc(eyeLX + 1, eyeY - 1.5, 1.2, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(eyeRX + 1, eyeY - 1.5, 1.2, 0, Math.PI * 2); ctx.fill();
 
-  // Smile
   ctx.strokeStyle = '#0f172a';
   ctx.lineWidth   = 1.8;
   ctx.beginPath();
   ctx.arc(x + W / 2, y + 23, 7, 0.1 * Math.PI, 0.9 * Math.PI);
   ctx.stroke();
 
-  // Key badge
   if (hasKey) {
     ctx.font      = '14px serif';
     ctx.textAlign = 'center';
     ctx.fillText('🔑', x + W / 2, y - 4);
   }
 
-  // Name tag
   ctx.font = 'bold 10px Segoe UI';
   const nameW = ctx.measureText(name).width + 12;
   ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
@@ -870,7 +981,6 @@ function drawPlayer(p) {
   ctx.textAlign = 'center';
   ctx.fillText(name, x + W / 2, y - 13);
 
-  // Door check indicator
   if (atDoor) {
     ctx.fillStyle = '#10b981';
     ctx.font      = 'bold 11px Segoe UI';
@@ -890,6 +1000,18 @@ function drawDoorProgress() {
   ctx.font      = 'bold 12px Segoe UI';
   ctx.textAlign = 'center';
   ctx.fillText(`${atDoor}/${total}`, door.x + dw / 2, door.y - 24);
+}
+
+// ── Screen Constraints Indicator (Pico Park Shared Screen Boundary) ──────────
+function drawScreenConstraintsIndicator() {
+  if (!currentLevel || currentLevel.worldW <= VIEW_W) return;
+
+  // Garis batas halus di tepi kiri & kanan layar agar pemain tahu batas layar
+  ctx.save();
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(1, 1, VIEW_W - 2, VIEW_H - 2);
+  ctx.restore();
 }
 
 // ─── Utility: RoundRect Polyfill ─────────────────────────────────────────────

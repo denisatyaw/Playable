@@ -27,163 +27,8 @@ const PLAYER_H      = 36;
 const COLORS = ['#FF4D6D', '#4CC9F0', '#52B788', '#FFD60A', '#FF9FF3'];
 const COLOR_NAMES = ['Red', 'Blue', 'Green', 'Yellow', 'Pink'];
 
-// ─── Level Data ─────────────────────────────────────────────────────────────
-// Each tile = 40×40 px.  W = world width, H = world height (px)
-// Tile types: 0=empty, 1=solid ground
-
-// ─── Level Data ─────────────────────────────────────────────────────────────
-// Each tile = 40×40 px. W = 1200 px, H = 600 px (30 cols × 15 rows)
-// Tile types: 0 = air, 1 = solid ground
-
-const LEVELS = [
-  // ── LEVEL 1: First Steps (Warm-up & Platforming) ───────────────────────────
-  {
-    id      : 1,
-    name    : 'Level 1 – First Steps',
-    worldW  : 1200,
-    worldH  : 600,
-    tileSize: 40,
-    tiles: [
-      '000000000000000000000000000000', // row 0
-      '000000000000000000000000000000', // row 1
-      '000000000000000000000000000000', // row 2
-      '000000000000000000000000000000', // row 3
-      '000111100000000000000001111000', // row 4  – platform kiri & kanan atas
-      '000000000000000000000000000000', // row 5
-      '000000000001111100000000000000', // row 6  – platform tengah
-      '000000000000000000000000000000', // row 7
-      '011110000000000000000000011110', // row 8  – platform kiri & kanan bawah
-      '000000000000000000000000000000', // row 9
-      '000000001111000000001111000000', // row 10 – stepping stones bawah
-      '000000000000000000000000000000', // row 11
-      '000000000000000000000000000000', // row 12
-      '000000000000000000000000000000', // row 13
-      '111111111111111111111111111111', // row 14 – lantai solid
-    ],
-    spawns: [
-      { x:  52, y: 500 },
-      { x:  96, y: 500 },
-      { x: 140, y: 500 },
-      { x: 184, y: 500 },
-      { x: 228, y: 500 },
-    ],
-    key : { x: 556, y: 212 },
-    door: { x: 1108, y: 480 },
-    doorW: 48,
-    doorH: 72,
-    boxes  : [],
-    buttons: [],
-    bridges: [],
-  },
-
-  // ── LEVEL 2: The Step (Dynamic Heavy Box DDS) ──────────────────────────────
-  // Tembok tinggi 120px di tengah (kolom 16-17). Pemain hanya bisa loncat 100px.
-  // Ada Dynamic Heavy Box (56x56) yang harus didorong bersama ke dinding.
-  // minPushers adaptif: playerCount - 1 (main ber-2 butuh 1, ber-5 butuh 4).
-  {
-    id      : 2,
-    name    : 'Level 2 – The Step',
-    worldW  : 1200,
-    worldH  : 600,
-    tileSize: 40,
-    tiles: [
-      '000000000000000000000000000000', // row 0
-      '000000000000000000000000000000', // row 1
-      '000000000000000000000000000000', // row 2
-      '000000000000000000000000000000', // row 3
-      '000000000000000000000000000000', // row 4
-      '000000000000000000000000000000', // row 5
-      '000000000000000000000000000000', // row 6
-      '000000000000000000000000000000', // row 7
-      '000000000000000000001111000000', // row 8  – platform kunci di seberang dinding
-      '000000000000000000000000000000', // row 9
-      '000000000000000000000000000000', // row 10
-      '000000000000000011000000000000', // row 11 – rintangan dinding (120px)
-      '000000000000000011000000000000', // row 12
-      '000000000000000011000000000000', // row 13
-      '111111111111111111111111111111', // row 14 – lantai solid
-    ],
-    spawns: [
-      { x:  52, y: 500 },
-      { x:  96, y: 500 },
-      { x: 140, y: 500 },
-      { x: 184, y: 500 },
-      { x: 228, y: 500 },
-    ],
-    key : { x: 860, y: 280 },  // Di atas platform seberang dinding
-    door: { x: 1108, y: 480 },
-    doorW: 48,
-    doorH: 72,
-    boxes: [
-      {
-        id: 'heavy_box_1',
-        x: 340,
-        y: 504,
-        w: 56,
-        h: 56,
-        vx: 0,
-        vy: 0,
-        onGround: true,
-        // Formula dinamis: butuh (playerCount - 1) orang mendorong bersamaan
-        minPushersFormula: (pCount) => Math.max(1, pCount - 1),
-      }
-    ],
-    buttons: [],
-    bridges: [],
-  },
-
-  // ── LEVEL 3: Hold the Door (Dynamic Multi-Buttons & Bridge DDS) ────────────
-  // Jurang maut di tengah (kolom 12-19). Di atasnya ada jembatan energi.
-  // Jumlah tombol aktif = (playerCount - 1). Tombol harus diinjak bersamaan!
-  // Setelah 1 pemain menyeberang dan mengambil kunci, jembatan terkunci ON permanen.
-  {
-    id      : 3,
-    name    : 'Level 3 – Hold the Door',
-    worldW  : 1200,
-    worldH  : 600,
-    tileSize: 40,
-    tiles: [
-      '000000000000000000000000000000', // row 0
-      '000000000000000000000000000000', // row 1
-      '000000000000000000000000000000', // row 2
-      '000000000000000000000000000000', // row 3
-      '000000000000000000000000000000', // row 4
-      '000000000000000000000000000000', // row 5
-      '000000000000000000000000000000', // row 6
-      '000000000000000000000000000000', // row 7
-      '000000000000000000000000000000', // row 8
-      '000000000000000000000000000000', // row 9
-      '000000000000000000000000000000', // row 10
-      '000000000000000000000000000000', // row 11
-      '000000000000000000000000000000', // row 12
-      '000000000000000000000000000000', // row 13
-      '111111111111000000001111111111', // row 14 – jurang di kolom 12 s/d 19!
-    ],
-    spawns: [
-      { x:  52, y: 500 },
-      { x:  88, y: 500 },
-      { x: 124, y: 500 },
-      { x: 160, y: 500 },
-      { x: 196, y: 500 },
-    ],
-    key : { x: 960, y: 480 },  // Di seberang jurang
-    door: { x: 1108, y: 480 }, // Di seberang jurang
-    doorW: 48,
-    doorH: 72,
-    boxes: [],
-    // 4 tombol di sisi kiri; hanya (playerCount - 1) tombol yang aktif
-    buttons: [
-      { id: 'btn_0', x: 240, y: 546, w: 38, h: 14, index: 0 },
-      { id: 'btn_1', x: 300, y: 546, w: 38, h: 14, index: 1 },
-      { id: 'btn_2', x: 360, y: 546, w: 38, h: 14, index: 2 },
-      { id: 'btn_3', x: 420, y: 546, w: 38, h: 14, index: 3 },
-    ],
-    // Jembatan melintasi jurang di kolom 12-19 (x: 480 sampai 800, lebar 320)
-    bridges: [
-      { id: 'bridge_gap', x: 480, y: 546, w: 320, h: 14, active: false }
-    ],
-  },
-];
+// ─── Level Data (Modular dari folder /levels) ───────────────────────────────
+const LEVELS = require('./levels');
 
 // ─── Server State ────────────────────────────────────────────────────────────
 let gameState = 'lobby';   // 'lobby' | 'playing' | 'win'
@@ -191,6 +36,7 @@ let currentLevelIdx = 0;
 
 const players = {};   // socketId → player object
 let   keyCollected = false;
+const VIEW_W = 1200;  // Lebar Viewport Kamera Bersama
 
 function getLevel() { return LEVELS[currentLevelIdx]; }
 
@@ -305,31 +151,62 @@ function initLevelEntities(lvl, pCount) {
   // 2. Dynamic Buttons (Multi-Buttons DDS: butuh playerCount - 1 tombol)
   const reqButtons = Math.max(1, pCount - 1);
   lvl.activeButtons = (lvl.buttons || []).map((btn, idx) => ({
-    id     : btn.id,
-    x      : btn.x,
-    y      : btn.y,
-    w      : btn.w,
-    h      : btn.h,
-    index  : btn.index !== undefined ? btn.index : idx,
-    active : idx < reqButtons,
-    pressed: false,
+    id        : btn.id,
+    x         : btn.x,
+    y         : btn.y,
+    w         : btn.w,
+    h         : btn.h,
+    index     : btn.index !== undefined ? btn.index : idx,
+    group     : btn.group,
+    isLatch   : !!btn.isLatch,
+    laserIndex: btn.laserIndex,
+    active    : btn.isLatch ? true : (idx < reqButtons),
+    pressed   : false,
   }));
 
   // 3. Dynamic Bridges (Bridge DDS)
   lvl.activeBridges = (lvl.bridges || []).map(brg => ({
-    id    : brg.id,
-    x     : brg.x,
-    y     : brg.y,
-    w     : brg.w,
-    h     : brg.h,
-    active: false,
+    id     : brg.id,
+    x      : brg.x,
+    y      : brg.y,
+    w      : brg.w,
+    h      : brg.h,
+    group  : brg.group,
+    active : false,
+    latched: false,
   }));
 
-  // 4. Dynamic Key Placement (jika ada formula ketinggian tumpuk)
+  // 4. Dynamic Lasers (Laser Grid DDS: lapis laser = playerCount - 1)
+  const reqLasers = Math.max(1, pCount - 1);
+  lvl.activeLasers = (lvl.lasers || []).map((l, idx) => ({
+    id    : l.id,
+    x     : l.x,
+    y     : l.y,
+    w     : l.w,
+    h     : l.h,
+    index : l.index !== undefined ? l.index : idx,
+    active: idx < reqLasers,
+  }));
+
+  // 5. Dynamic Springboards (Bantalan Lompat)
+  lvl.activeSpringboards = (lvl.springboards || []).map(sb => ({
+    id         : sb.id,
+    x          : sb.x,
+    y          : sb.y,
+    w          : sb.w,
+    h          : sb.h,
+    bounceForce: sb.bounceForce || -880,
+    squash     : 0,
+  }));
+
+  // 6. Dynamic Key Placement (ketinggian tumpuk dinamis)
   if (lvl.keyFormula) {
     const kPos = lvl.keyFormula(pCount);
     lvl.key = { ...lvl.key, ...kPos };
   }
+
+  // 7. Reset Kamera Bersama
+  lvl.camX = 0;
 }
 
 // ─── Player–Player Collisions (FIXED: Bebas Lengket & Magnet) ────────────────
@@ -489,7 +366,7 @@ function updateBoxes(lvl, dt) {
   });
 }
 
-// ─── Dynamic Buttons & Bridges Physics (DDS) ─────────────────────────────────
+// ─── Dynamic Buttons & Bridges Physics (DDS & Multi-Group) ───────────────────
 function updateButtonsAndBridges(lvl) {
   if (!lvl.activeButtons || lvl.activeButtons.length === 0) return;
   const pArr = Object.values(players);
@@ -498,7 +375,7 @@ function updateButtonsAndBridges(lvl) {
   // Reset status tombol
   lvl.activeButtons.forEach(btn => {
     btn.pressed = false;
-    if (!btn.active) return; // Tombol non-aktif diabaikan
+    if (!btn.active) return;
 
     // Cek apakah ada pemain menginjak tombol
     for (const p of pArr) {
@@ -519,18 +396,36 @@ function updateButtonsAndBridges(lvl) {
         }
       }
     }
+
+    // Jika ini adalah tombol Latch dan terinjak, kunci jembatan group terkait selamanya!
+    if (btn.isLatch && btn.pressed && lvl.activeBridges) {
+      lvl.activeBridges.forEach(brg => {
+        if (brg.group === btn.group) {
+          brg.latched = true;
+        }
+      });
+    }
   });
 
-  // Jembatan aktif jika SEMUA tombol yang aktif sedang diinjak, ATAU kunci sudah diambil
-  const activeBtns = lvl.activeButtons.filter(b => b.active);
-  const allPressed = activeBtns.length > 0 && activeBtns.every(b => b.pressed);
-  const bridgeActive = allPressed || keyCollected;
-
+  // Update status Jembatan
   if (lvl.activeBridges) {
     lvl.activeBridges.forEach(brg => {
-      brg.active = bridgeActive;
+      let isPowered = false;
 
-      // Jika jembatan aktif, jadikan platform pijakan solid
+      if (brg.group) {
+        // Tombol yang se-grup dengan jembatan ini
+        const grpBtns = lvl.activeButtons.filter(b => b.group === brg.group && b.active && !b.isLatch);
+        const grpAllPressed = grpBtns.length > 0 && grpBtns.every(b => b.pressed);
+        isPowered = grpAllPressed || brg.latched || keyCollected;
+      } else {
+        const activeBtns = lvl.activeButtons.filter(b => b.active && !b.isLatch);
+        const allPressed = activeBtns.length > 0 && activeBtns.every(b => b.pressed);
+        isPowered = allPressed || brg.latched || keyCollected;
+      }
+
+      brg.active = isPowered;
+
+      // Jika jembatan aktif, jadikan platform solid untuk pemain
       if (brg.active) {
         pArr.forEach(p => {
           if (p.x + p.w > brg.x && p.x < brg.x + brg.w &&
@@ -544,6 +439,101 @@ function updateButtonsAndBridges(lvl) {
       }
     });
   }
+}
+
+// ─── Dynamic Lasers Physics (Level 5 Hazard DDS) ─────────────────────────────
+function updateLasers(lvl) {
+  if (!lvl.activeLasers || lvl.activeLasers.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeLasers.forEach(laser => {
+    // Laser mati jika tombol kontrolnya ditekan ATAU kunci sudah berhasil diambil
+    const matchingBtn = (lvl.activeButtons || []).find(b => b.laserIndex === laser.index);
+    const isBtnPressed = matchingBtn ? matchingBtn.pressed : false;
+
+    laser.isBlocked = isBtnPressed || keyCollected;
+
+    // Jika laser menyala (hazard aktif), periksa tabrakan mematikan dengan pemain
+    if (laser.active && !laser.isBlocked) {
+      pArr.forEach((p, idx) => {
+        const hit = p.x + p.w > laser.x &&
+                    p.x       < laser.x + laser.w &&
+                    p.y + p.h > laser.y &&
+                    p.y       < laser.y + laser.h;
+        if (hit) {
+          // Pemain terkena laser: respawn di spawn point
+          const sp = lvl.spawns[idx] || { x: 60, y: 500 };
+          p.x = sp.x;
+          p.y = sp.y;
+          p.vx = 0;
+          p.vy = 0;
+          p.onGround = false;
+          io.emit('playerVaporized', { id: p.id, name: p.name });
+        }
+      });
+    }
+  });
+}
+
+// ─── Springboards Physics (Level 4 & 5 Trampolin) ────────────────────────────
+function updateSpringboards(lvl) {
+  if (!lvl.activeSpringboards || lvl.activeSpringboards.length === 0) return;
+  const pArr = Object.values(players);
+
+  lvl.activeSpringboards.forEach(sb => {
+    if (sb.squash > 0) sb.squash = Math.max(0, sb.squash - 0.1);
+
+    pArr.forEach(p => {
+      const onPad = p.x + p.w > sb.x &&
+                    p.x       < sb.x + sb.w &&
+                    p.y + p.h >= sb.y &&
+                    p.y + p.h <= sb.y + sb.h + 10 &&
+                    p.vy >= 0;
+      if (onPad) {
+        p.vy = sb.bounceForce || -880;
+        p.onGround = false;
+        sb.squash = 1;
+      }
+    });
+  });
+}
+
+// ─── Shared Viewport Camera & Screen Constraint (Pico Park Style) ────────────
+function updateCameraAndConstraints(lvl) {
+  const pArr = Object.values(players);
+  if (pArr.length === 0) return;
+
+  const minX = Math.min(...pArr.map(p => p.x));
+  const maxX = Math.max(...pArr.map(p => p.x + p.w));
+
+  // Pusatkan kamera pada rata-rata posisi seluruh tim
+  const teamCenter = (minX + maxX) / 2;
+  let targetCamX = teamCenter - VIEW_W / 2;
+  targetCamX = Math.max(0, Math.min(lvl.worldW - VIEW_W, targetCamX));
+
+  if (lvl.camX === undefined) {
+    lvl.camX = targetCamX;
+  } else {
+    // Interpolasi kamera halus
+    lvl.camX += (targetCamX - lvl.camX) * 0.12;
+  }
+
+  // ⚠️ SCREEN CONSTRAINT: Tidak ada pemain yang boleh keluar dari batas layar!
+  // Pemain di tepi kanan akan terhalang sampai kawan di belakang maju.
+  // Pemain di tepi kiri akan didorong maju oleh batas kamera.
+  const leftEdge  = lvl.camX;
+  const rightEdge = lvl.camX + VIEW_W;
+
+  pArr.forEach(p => {
+    if (p.x < leftEdge) {
+      p.x = leftEdge;
+      if (p.vx < 0) p.vx = 0;
+    }
+    if (p.x + p.w > rightEdge) {
+      p.x = rightEdge - p.w;
+      if (p.vx > 0) p.vx = 0;
+    }
+  });
 }
 
 // ─── Physics Tick ────────────────────────────────────────────────────────────
@@ -579,10 +569,19 @@ function physicsTick() {
   // 3. Update Dynamic Buttons & Bridges (DDS)
   updateButtonsAndBridges(lvl);
 
-  // 4. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
+  // 4. Update Lasers (Hazard Level 5)
+  updateLasers(lvl);
+
+  // 5. Update Springboards (Bantalan Lompat Level 4 & 5)
+  updateSpringboards(lvl);
+
+  // 6. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
   resolvePlayerCollisions(lvl);
 
-  // 5. Jurang / Pit Respawn (jika pemain jatuh ke luar arena)
+  // 7. Update Kamera Bersama & Batas Layar Tetap (Shared Viewport Constraint)
+  updateCameraAndConstraints(lvl);
+
+  // 8. Jurang / Pit Respawn (jika pemain jatuh ke luar arena)
   Object.values(players).forEach((p, idx) => {
     if (p.y > lvl.worldH + 15) {
       const sp = lvl.spawns[idx] || { x: 60, y: 500 };
@@ -594,13 +593,13 @@ function physicsTick() {
     }
   });
 
-  // 6. Ambil Kunci
+  // 9. Ambil Kunci
   if (!keyCollected) {
     const kx = lvl.key.x, ky = lvl.key.y;
     Object.values(players).forEach(p => {
       if (!keyCollected &&
-          p.x < kx + 24 && p.x + p.w > kx &&
-          p.y < ky + 24 && p.y + p.h > ky) {
+          p.x < kx + 28 && p.x + p.w > kx &&
+          p.y < ky + 28 && p.y + p.h > ky) {
         keyCollected = true;
         p.hasKey = true;
         io.emit('keyCollected', { by: p.id });
@@ -608,7 +607,7 @@ function physicsTick() {
     });
   }
 
-  // 7. Cek Pintu Keluar – semua pemain yang terhubung harus berada di pintu bersamaan
+  // 10. Cek Pintu Keluar – semua pemain yang terhubung harus berada di pintu bersamaan
   if (keyCollected) {
     const door = lvl.door;
     const allIds = Object.keys(players);
@@ -632,7 +631,7 @@ function physicsTick() {
     }
   }
 
-  // 8. Broadcast snapshot ke semua client
+  // 11. Broadcast snapshot ke semua client (termasuk camX, lasers, springboards)
   const snapshot = Object.values(players).map(p => ({
     id       : p.id,
     name     : p.name,
@@ -651,9 +650,12 @@ function physicsTick() {
     keyCollected,
     gameState,
     level       : lvl,
+    camX        : Math.round(lvl.camX || 0),
     boxes       : lvl.activeBoxes || [],
     buttons     : lvl.activeButtons || [],
     bridges     : lvl.activeBridges || [],
+    lasers      : lvl.activeLasers || [],
+    springboards: lvl.activeSpringboards || [],
   });
 }
 
