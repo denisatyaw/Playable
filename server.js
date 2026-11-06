@@ -44,14 +44,18 @@ function buildPlayerPhysics(spawnIdx) {
   const lvl  = getLevel();
   const spawn = lvl.spawns[spawnIdx] || { x: 60, y: 500 };
   return {
-    x     : spawn.x,
-    y     : spawn.y,
-    vx    : 0,
-    vy    : 0,
+    x       : spawn.x,
+    y       : spawn.y,
+    prevX   : spawn.x,
+    prevY   : spawn.y,
+    deltaX  : 0,
+    standingOnId: null,
+    vx      : 0,
+    vy      : 0,
     onGround: false,
-    w     : PLAYER_W,
-    h     : PLAYER_H,
-    keys  : { left: false, right: false, up: false },
+    w       : PLAYER_W,
+    h       : PLAYER_H,
+    keys    : { left: false, right: false, up: false, down: false },
   };
 }
 
@@ -286,13 +290,72 @@ function initLevelEntities(lvl, pCount) {
   }
 }
 
-// ─── Player–Player Collisions (FIXED: Bebas Lengket & Magnet) ────────────────
+// ─── Player–Player Collisions & Tower Stacking (Pico Park Style) ──────────────
 function resolvePlayerCollisions(lvl) {
   const pArr = Object.values(players);
+  if (pArr.length < 2) return;
+
+  // 1. Reset relasi pijakan antar pemain
+  pArr.forEach(p => { p.standingOnId = null; });
+
+  // 2. Deteksi Stacking (Siapa mendarat/berdiri di atas kepala siapa)
+  for (let i = 0; i < pArr.length; i++) {
+    for (let j = 0; j < pArr.length; j++) {
+      if (i === j) continue;
+      const upper = pArr[i];
+      const lower = pArr[j];
+
+      if (upper.isAmmo || lower.isAmmo) continue;
+
+      // Overlap horizontal minimal 8px agar kokoh berpijak
+      const ox = Math.min(upper.x + upper.w, lower.x + lower.w) - Math.max(upper.x, lower.x);
+      // Ketinggian kaki Upper terhadap kepala Lower
+      const feetToHead = (upper.y + upper.h) - lower.y;
+
+      // Upper berada di atas Lower jika kaki Upper pas di sekitar kepala Lower (-6px s/d 16px)
+      if (ox >= 8 && feetToHead >= -6 && feetToHead <= 16 && upper.vy >= lower.vy && upper.y < lower.y) {
+        upper.y = lower.y - upper.h;
+        upper.vy = 0;
+        upper.onGround = true;
+        upper.standingOnId = lower.id;
+      }
+    }
+  }
+
+  // 3. PROPAGASI GERAKAN MENARA (Tower Carrying: Mengikuti gerakan pemain bawah)
+  // Urutkan dari Y terbesar (lantai paling bawah) ke Y terkecil (puncak menara)
+  // Sehingga jika menumpuk banyak (stack 2, 3, 4, 5 orang), seluruh menara
+  // secara otomatis mengikuti perpindahan (deltaX) pemain yang berada di bawahnya!
+  const sortedByY = [...pArr].sort((a, b) => b.y - a.y);
+
+  sortedByY.forEach(rider => {
+    if (rider.standingOnId && players[rider.standingOnId]) {
+      const base = players[rider.standingOnId];
+      if (base.deltaX) {
+        rider.x += base.deltaX;
+        rider.deltaX = (rider.deltaX || 0) + base.deltaX;
+
+        // Ikuti arah hadap pemain bawah jika pemain atas tidak menekan tombol jalan sendiri
+        if (!rider.keys.left && !rider.keys.right && base.facing) {
+          rider.facing = base.facing;
+        }
+
+        // Pastikan tidak tembus batas dunia
+        rider.x = Math.max(0, Math.min(lvl.worldW - rider.w, rider.x));
+      }
+    }
+  });
+
+  // 4. Tabrakan Solid Horizontal untuk pemain yang TIDAK sedang bertumpukan
   for (let i = 0; i < pArr.length; i++) {
     for (let j = i + 1; j < pArr.length; j++) {
       const a = pArr[i];
       const b = pArr[j];
+
+      if (a.isAmmo || b.isAmmo) continue;
+
+      // Jangan pisahkan secara horizontal jika salah satu sedang menjadi pijakan bagi yang lain
+      if (a.standingOnId === b.id || b.standingOnId === a.id) continue;
 
       const dx = (a.x + a.w / 2) - (b.x + b.w / 2);
       const dy = (a.y + a.h / 2) - (b.y + b.h / 2);
@@ -300,42 +363,18 @@ function resolvePlayerCollisions(lvl) {
       const overlapX = (a.w / 2 + b.w / 2) - Math.abs(dx);
       const overlapY = (a.h / 2 + b.h / 2) - Math.abs(dy);
 
-      // Jangan tabrakkan jika salah satu pemain sedang menjadi peluru di kantong ketapel
-      if (a.isAmmo || b.isAmmo) continue;
+      if (overlapX <= 0 || overlapY <= 0) continue;
 
-      // KUNCI: AABB strict positif! Jika tidak ada tumpang-tindih di kedua sumbu, TIDAK ADA TABRAKAN!
-      if (overlapX <= 0 || overlapY <= 0) {
-        continue;
-      }
-
-      // 1. Mekanik Tumpuk (Vertical Stacking di atas kepala)
-      // Pemain A mendarat di atas Pemain B
-      if (dy < 0 && (a.y + a.h - b.y) <= 16 && a.vy >= b.vy) {
-        a.y = b.y - a.h;
-        a.vy = 0;
-        a.onGround = true;
-      }
-      // Pemain B mendarat di atas Pemain A
-      else if (dy > 0 && (b.y + b.h - a.y) <= 16 && b.vy >= a.vy) {
-        b.y = a.y - b.h;
-        b.vy = 0;
-        b.onGround = true;
-      }
-      // 2. Pemisahan Horizontal (Berdampingan tanpa gaya gesek lengket)
-      else if (overlapX < overlapY) {
+      if (overlapX < overlapY) {
         const push = overlapX / 2;
         if (dx > 0) {
-          // A di sebelah kanan B
           a.x += push;
           b.x -= push;
         } else {
-          // A di sebelah kiri B
           a.x -= push;
           b.x += push;
         }
-      }
-      // 3. Pemisahan Vertikal jika saling berhimpit
-      else {
+      } else {
         const push = overlapY / 2;
         if (dy > 0) {
           a.y += push;
@@ -346,7 +385,6 @@ function resolvePlayerCollisions(lvl) {
         }
       }
 
-      // Pastikan pemain tidak keluar dari batas level
       a.x = Math.max(0, Math.min(lvl.worldW - a.w, a.x));
       b.x = Math.max(0, Math.min(lvl.worldW - b.w, b.x));
     }
@@ -471,7 +509,10 @@ function updateBoxes(lvl, dt) {
         p.y = box.y - p.h;
         p.vy = 0;
         p.onGround = true;
-        if (box.deltaX) p.x += box.deltaX;
+        if (box.deltaX) {
+          p.x += box.deltaX;
+          p.deltaX = (p.deltaX || 0) + box.deltaX;
+        }
       } else {
         // 2. Pemain di samping kotak: TIDAK BISA MENEMBUS KOTAK
         const dx = (p.x + p.w / 2) - (box.x + box.w / 2);
@@ -976,8 +1017,12 @@ function physicsTick() {
   lastTick  = now;
   const lvl = getLevel();
 
-  // 1. Update pergerakan pemain (Input + Gravitasi + Ubin)
+  // 1. Simpan posisi sebelumnya & update gerak pemain (Input + Gravitasi + Ubin)
   Object.values(players).forEach(p => {
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.deltaX = 0;
+
     if (p.isAmmo) {
       // Pemain terkunci di kantong ketapel manusia
       return;
@@ -989,12 +1034,15 @@ function physicsTick() {
     if (p.keys.up && p.onGround) {
       p.vy = JUMP_VELOCITY;
       p.onGround = false;
+      p.standingOnId = null;
     }
 
     p.vy += GRAVITY * dt;
 
     const res = resolveAABBVsTiles(lvl, p.x, p.y, p.vx, p.vy, p.w, p.h, dt);
     p.x = res.x; p.y = res.y; p.vx = res.vx; p.vy = res.vy; p.onGround = res.onGround;
+
+    p.deltaX = p.x - p.prevX;
   });
 
   // 2. Update Dynamic Heavy Boxes (DDS)
@@ -1027,6 +1075,10 @@ function physicsTick() {
       const sp = lvl.spawns[idx] || { x: 60, y: 500 };
       p.x = sp.x;
       p.y = sp.y;
+      p.prevX = sp.x;
+      p.prevY = sp.y;
+      p.deltaX = 0;
+      p.standingOnId = null;
       p.vx = 0;
       p.vy = 0;
       p.onGround = false;
@@ -1126,6 +1178,10 @@ function startLevel() {
     const sp = lvl.spawns[i] || { x: 60, y: 500 };
     pl.x        = sp.x;
     pl.y        = sp.y;
+    pl.prevX    = sp.x;
+    pl.prevY    = sp.y;
+    pl.deltaX   = 0;
+    pl.standingOnId = null;
     pl.vx       = 0;
     pl.vy       = 0;
     pl.facing   = 1;
