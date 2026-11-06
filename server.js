@@ -159,9 +159,12 @@ function initLevelEntities(lvl, pCount) {
     index     : btn.index !== undefined ? btn.index : idx,
     group     : btn.group,
     isLatch   : !!btn.isLatch,
+    gateId    : btn.gateId,
+    label     : btn.label,
     laserIndex: btn.laserIndex,
-    active    : btn.isLatch ? true : (idx < reqButtons),
+    active    : btn.isLatch || btn.gateId ? true : (idx < reqButtons),
     pressed   : false,
+    latched   : false,
   }));
 
   // 3. Dynamic Bridges (Bridge DDS)
@@ -199,13 +202,24 @@ function initLevelEntities(lvl, pCount) {
     squash     : 0,
   }));
 
-  // 6. Dynamic Key Placement (ketinggian tumpuk dinamis)
+  // 6. Dynamic Gates (Gerbang Terbuka Otomatis via Tombol/Kunci)
+  lvl.activeGates = (lvl.gates || []).map(g => ({
+    id   : g.id,
+    x    : g.x,
+    y    : g.y,
+    w    : g.w,
+    h    : g.h,
+    label: g.label || 'GERBANG',
+    open : false,
+  }));
+
+  // 7. Dynamic Key Placement (ketinggian tumpuk dinamis)
   if (lvl.keyFormula) {
     const kPos = lvl.keyFormula(pCount);
     lvl.key = { ...lvl.key, ...kPos };
   }
 
-  // 7. Reset Kamera Bersama
+  // 8. Reset Kamera Bersama
   lvl.camX = 0;
 }
 
@@ -273,17 +287,18 @@ function resolvePlayerCollisions(lvl) {
   }
 }
 
-// ─── Dynamic Heavy Boxes Physics (DDS) ───────────────────────────────────────
+// ─── Dynamic Heavy Boxes Physics (DDS & Stacking) ────────────────────────────
 function updateBoxes(lvl, dt) {
   if (!lvl.activeBoxes || lvl.activeBoxes.length === 0) return;
   const pArr = Object.values(players);
 
+  // 1. Deteksi interaksi pemain terhadap setiap kotak (berdiri di atas & mendorong)
   lvl.activeBoxes.forEach(box => {
     let rightPushers = 0;
     let leftPushers  = 0;
 
     pArr.forEach(p => {
-      // 1. Pemain berdiri di atas kotak
+      // Pemain berdiri di atas kotak
       const onTop = p.x + p.w > box.x + 2 &&
                     p.x < box.x + box.w - 2 &&
                     p.y + p.h >= box.y - 4 &&
@@ -295,8 +310,8 @@ function updateBoxes(lvl, dt) {
         p.onGround = true;
       }
 
-      // 2. Deteksi dorongan ke Kanan (pemain di kiri kotak, menekan kanan)
-      const onLeft = p.x + p.w >= box.x - 4 &&
+      // Deteksi dorongan ke Kanan (pemain di kiri kotak, menekan kanan)
+      const onLeft = p.x + p.w >= box.x - 6 &&
                      p.x + p.w <= box.x + 8 &&
                      p.y + p.h > box.y + 6 &&
                      p.y < box.y + box.h - 6;
@@ -304,9 +319,9 @@ function updateBoxes(lvl, dt) {
         rightPushers++;
       }
 
-      // 3. Deteksi dorongan ke Kiri (pemain di kanan kotak, menekan kiri)
+      // Deteksi dorongan ke Kiri (pemain di kanan kotak, menekan kiri)
       const onRight = p.x >= box.x + box.w - 8 &&
-                      p.x <= box.x + box.w + 4 &&
+                      p.x <= box.x + box.w + 6 &&
                       p.y + p.h > box.y + 6 &&
                       p.y < box.y + box.h - 6;
       if (onRight && p.keys.left) {
@@ -338,16 +353,54 @@ function updateBoxes(lvl, dt) {
     box.vy = res.vy;
     box.onGround = res.onGround;
 
-    const deltaX = box.x - prevX;
+    box.deltaX = box.x - prevX;
+  });
 
-    // Solid collision kotak terhadap pemain (mendorong pemain / pemain menaiki kotak)
+  // 2. Tabrakan Antar Kotak (Box vs Box: Solid & Stacking)
+  for (let i = 0; i < lvl.activeBoxes.length; i++) {
+    for (let j = 0; j < lvl.activeBoxes.length; j++) {
+      if (i === j) continue;
+      const b1 = lvl.activeBoxes[i];
+      const b2 = lvl.activeBoxes[j];
+
+      const dx = (b1.x + b1.w / 2) - (b2.x + b2.w / 2);
+      const dy = (b1.y + b1.h / 2) - (b2.y + b2.h / 2);
+      const ox = (b1.w / 2 + b2.w / 2) - Math.abs(dx);
+      const oy = (b1.h / 2 + b2.h / 2) - Math.abs(dy);
+
+      if (ox > 0 && oy > 0) {
+        // b1 mendarat di atas b2 (Stacking Kotak di Atas Kotak)
+        if (dy < 0 && (b1.y + b1.h - b2.y) <= 18 && b1.vy >= b2.vy) {
+          b1.y = b2.y - b1.h;
+          b1.vy = 0;
+          b1.onGround = true;
+          // Ikuti gerakan kotak di bawahnya
+          if (b2.deltaX) {
+            b1.x += b2.deltaX;
+          }
+        }
+        // Pemisahan horizontal jika berdampingan
+        else if (ox < oy) {
+          if (dx > 0) {
+            b1.x = b2.x + b2.w;
+          } else {
+            b1.x = b2.x - b1.w;
+          }
+          b1.vx = 0;
+        }
+      }
+    }
+  }
+
+  // 3. Solid collision kotak terhadap pemain & pembawaan gerak pemain
+  lvl.activeBoxes.forEach(box => {
     pArr.forEach(p => {
       // Jika menaiki kotak, bawa pemain ikut bergeser bersama kotak
       const onTop = p.x + p.w > box.x &&
                     p.x < box.x + box.w &&
-                    Math.abs((p.y + p.h) - box.y) <= 6;
-      if (onTop) {
-        p.x += deltaX;
+                    Math.abs((p.y + p.h) - box.y) <= 8;
+      if (onTop && box.deltaX) {
+        p.x += box.deltaX;
       }
 
       // Halangi pemain menembus sisi kotak
@@ -366,13 +419,13 @@ function updateBoxes(lvl, dt) {
   });
 }
 
-// ─── Dynamic Buttons & Bridges Physics (DDS & Multi-Group) ───────────────────
+// ─── Dynamic Buttons & Bridges Physics (DDS, Multi-Group & Gates) ────────────
 function updateButtonsAndBridges(lvl) {
   if (!lvl.activeButtons || lvl.activeButtons.length === 0) return;
   const pArr = Object.values(players);
   const bArr = lvl.activeBoxes || [];
 
-  // Reset status tombol
+  // Reset status tombol (kecuali jika sudah latched)
   lvl.activeButtons.forEach(btn => {
     btn.pressed = false;
     if (!btn.active) return;
@@ -397,15 +450,43 @@ function updateButtonsAndBridges(lvl) {
       }
     }
 
-    // Jika ini adalah tombol Latch dan terinjak, kunci jembatan group terkait selamanya!
-    if (btn.isLatch && btn.pressed && lvl.activeBridges) {
-      lvl.activeBridges.forEach(brg => {
-        if (brg.group === btn.group) {
-          brg.latched = true;
+    // Jika ini adalah tombol Latch dan terinjak:
+    if (btn.isLatch && btn.pressed) {
+      btn.latched = true;
+      // Kunci jembatan group terkait
+      if (lvl.activeBridges && btn.group) {
+        lvl.activeBridges.forEach(brg => {
+          if (brg.group === btn.group) {
+            brg.latched = true;
+          }
+        });
+      }
+      // Buka gerbang terkait
+      if (lvl.activeGates && btn.gateId) {
+        lvl.activeGates.forEach(g => {
+          if (g.id === btn.gateId) {
+            g.open = true;
+          }
+        });
+      }
+    } else if (btn.gateId && (btn.pressed || btn.latched) && lvl.activeGates) {
+      lvl.activeGates.forEach(g => {
+        if (g.id === btn.gateId) {
+          g.open = true;
         }
       });
     }
   });
+
+  // Jika kunci diambil, buka semua gerbang & jembatan selamanya!
+  if (keyCollected) {
+    if (lvl.activeGates) {
+      lvl.activeGates.forEach(g => { g.open = true; });
+    }
+    if (lvl.activeBridges) {
+      lvl.activeBridges.forEach(brg => { brg.latched = true; });
+    }
+  }
 
   // Update status Jembatan
   if (lvl.activeBridges) {
@@ -439,6 +520,56 @@ function updateButtonsAndBridges(lvl) {
       }
     });
   }
+}
+
+// ─── Dynamic Gates Physics (Anti-Strand Gate Barrier) ────────────────────────
+function updateGates(lvl) {
+  if (!lvl.activeGates || lvl.activeGates.length === 0) return;
+  const pArr = Object.values(players);
+  const bArr = lvl.activeBoxes || [];
+
+  lvl.activeGates.forEach(gate => {
+    // Jika kunci sudah diambil, gerbang selalu terbuka
+    if (keyCollected) {
+      gate.open = true;
+    }
+
+    // Jika gerbang masih tertutup, bertindak sebagai dinding solid
+    if (!gate.open) {
+      // Halangi pemain menembus
+      pArr.forEach(p => {
+        const dx = (p.x + p.w / 2) - (gate.x + gate.w / 2);
+        const dy = (p.y + p.h / 2) - (gate.y + gate.h / 2);
+        const ox = (p.w / 2 + gate.w / 2) - Math.abs(dx);
+        const oy = (p.h / 2 + gate.h / 2) - Math.abs(dy);
+
+        if (ox > 0 && oy > 0) {
+          if (ox < oy) {
+            if (dx > 0) { p.x = gate.x + gate.w; if (p.vx < 0) p.vx = 0; }
+            else        { p.x = gate.x - p.w;    if (p.vx > 0) p.vx = 0; }
+          } else {
+            if (dy > 0) { p.y = gate.y + gate.h; if (p.vy < 0) p.vy = 0; }
+            else        { p.y = gate.y - p.h;    if (p.vy > 0) p.vy = 0; p.onGround = true; }
+          }
+        }
+      });
+
+      // Halangi kotak menembus
+      bArr.forEach(b => {
+        const dx = (b.x + b.w / 2) - (gate.x + gate.w / 2);
+        const dy = (b.y + b.h / 2) - (gate.y + gate.h / 2);
+        const ox = (b.w / 2 + gate.w / 2) - Math.abs(dx);
+        const oy = (b.h / 2 + gate.h / 2) - Math.abs(dy);
+
+        if (ox > 0 && oy > 0) {
+          if (ox < oy) {
+            if (dx > 0) { b.x = gate.x + gate.w; if (b.vx < 0) b.vx = 0; }
+            else        { b.x = gate.x - b.w;    if (b.vx > 0) b.vx = 0; }
+          }
+        }
+      });
+    }
+  });
 }
 
 // ─── Dynamic Lasers Physics (Level 5 Hazard DDS) ─────────────────────────────
@@ -569,19 +700,22 @@ function physicsTick() {
   // 3. Update Dynamic Buttons & Bridges (DDS)
   updateButtonsAndBridges(lvl);
 
-  // 4. Update Lasers (Hazard Level 5)
+  // 4. Update Dynamic Gates (Anti-Strand Gate Barriers)
+  updateGates(lvl);
+
+  // 5. Update Lasers (Hazard Level 5)
   updateLasers(lvl);
 
-  // 5. Update Springboards (Bantalan Lompat Level 4 & 5)
+  // 6. Update Springboards (Bantalan Lompat Level 4 & 5)
   updateSpringboards(lvl);
 
-  // 6. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
+  // 7. Tabrakan antar pemain (Bebas Lengket & Tumpuk Solid)
   resolvePlayerCollisions(lvl);
 
-  // 7. Update Kamera Bersama & Batas Layar Tetap (Shared Viewport Constraint)
+  // 8. Update Kamera Bersama & Batas Layar Tetap (Shared Viewport Constraint)
   updateCameraAndConstraints(lvl);
 
-  // 8. Jurang / Pit Respawn (jika pemain jatuh ke luar arena)
+  // 9. Jurang / Pit Respawn (jika pemain jatuh ke luar arena)
   Object.values(players).forEach((p, idx) => {
     if (p.y > lvl.worldH + 15) {
       const sp = lvl.spawns[idx] || { x: 60, y: 500 };
@@ -654,6 +788,7 @@ function physicsTick() {
     boxes       : lvl.activeBoxes || [],
     buttons     : lvl.activeButtons || [],
     bridges     : lvl.activeBridges || [],
+    gates       : lvl.activeGates || [],
     lasers      : lvl.activeLasers || [],
     springboards: lvl.activeSpringboards || [],
   });

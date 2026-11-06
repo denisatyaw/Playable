@@ -68,6 +68,7 @@ let animRunning      = false;
 let currentBoxes        = [];
 let currentButtons      = [];
 let currentBridges      = [];
+let currentGates        = [];
 let currentLasers       = [];
 let currentSpringboards = [];
 
@@ -381,6 +382,7 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   keyCollected = false;
   currentCamX  = 0;
   renderCamX   = 0;
+  currentGates = level.activeGates || [];
   resizeCanvas();
 
   hudLevel.textContent     = level.name;
@@ -401,12 +403,13 @@ socket.on('gameStarted', ({ level, playerCount: pCount }) => {
   }
 });
 
-socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, lasers, springboards, camX }) => {
+socket.on('gameState', ({ players, keyCollected: kc, boxes, buttons, bridges, gates, lasers, springboards, camX }) => {
   lastSnapshot        = players;
   keyCollected        = kc;
   currentBoxes        = boxes || [];
   currentButtons      = buttons || [];
   currentBridges      = bridges || [];
+  currentGates        = gates || [];
   currentLasers       = lasers || [];
   currentSpringboards = springboards || [];
   currentCamX         = camX || 0;
@@ -499,6 +502,7 @@ function renderLoop() {
 
   drawTiles();
   drawBridges();
+  drawGates();
   drawButtons();
   drawSpringboards();
   drawLasers();
@@ -660,12 +664,62 @@ function drawBridges() {
   });
 }
 
+// ── Dynamic Gates (Anti-Strand Gate Barriers) ─────────────────────────────────
+function drawGates() {
+  currentGates.forEach(gate => {
+    ctx.save();
+    if (!gate.open) {
+      // Gerbang Tertutup: Pagar baja bertulang dengan aksen hazard
+      ctx.fillStyle = '#1e293b';
+      roundRect(ctx, gate.x, gate.y, gate.w, gate.h, 6);
+      ctx.fill();
+
+      // Border oranye hazard
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth   = 3;
+      ctx.stroke();
+
+      // Kisi-kisi gerbang baja
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.4)';
+      ctx.lineWidth   = 2;
+      for (let y = gate.y + 14; y < gate.y + gate.h - 4; y += 14) {
+        ctx.beginPath();
+        ctx.moveTo(gate.x + 6, y);
+        ctx.lineTo(gate.x + gate.w - 6, y);
+        ctx.stroke();
+      }
+
+      // Ikon gembok dan label gerbang
+      ctx.fillStyle = '#f59e0b';
+      ctx.font      = 'bold 11px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🔒 ${gate.label || 'GERBANG'}`, gate.x + gate.w / 2, gate.y - 10);
+    } else {
+      // Gerbang Terbuka: bingkai hijau neon menyala, lorong tembus
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([6, 4]);
+      roundRect(ctx, gate.x, gate.y, gate.w, gate.h, 6);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.12)';
+      ctx.fillRect(gate.x, gate.y, gate.w, gate.h);
+
+      ctx.fillStyle = '#10b981';
+      ctx.font      = 'bold 11px Segoe UI';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🔓 ${gate.label || 'GERBANG'} TERBUKA`, gate.x + gate.w / 2, gate.y - 10);
+    }
+    ctx.restore();
+  });
+}
+
 // ── Dynamic Buttons (DDS) ────────────────────────────────────────────────────
 function drawButtons() {
   currentButtons.forEach(btn => {
     if (!btn.active) return;
 
-    const isPressed = btn.pressed;
+    const isPressed = btn.pressed || btn.latched;
     const pressOffset = isPressed ? 4 : 0;
     const h = btn.h - pressOffset;
     const y = btn.y + pressOffset;
@@ -691,7 +745,7 @@ function drawButtons() {
     ctx.fillStyle = isPressed ? '#10b981' : (btn.isLatch ? '#0284c7' : '#f59e0b');
     ctx.font      = 'bold 10px Segoe UI';
     ctx.textAlign = 'center';
-    const label = btn.isLatch ? '🔒 KAIT' : (btn.laserIndex !== undefined ? `LASER #${btn.laserIndex + 1}` : `BTN #${btn.index + 1}`);
+    const label = btn.label || (btn.isLatch ? '🔒 KAIT' : (btn.laserIndex !== undefined ? `LASER #${btn.laserIndex + 1}` : `BTN #${btn.index + 1}`));
     ctx.fillText(label, btn.x + btn.w / 2, btn.y - 8);
   });
 }
