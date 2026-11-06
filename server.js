@@ -746,6 +746,15 @@ io.on('connection', socket => {
     }
   });
 
+  // ── Retry Level saat permainan sedang berlangsung ──────────────────────────
+  socket.on('retryLevel', () => {
+    const p = players[socket.id];
+    if (!p || gameState !== 'playing') return;
+    console.log(`  > Level ${currentLevelIdx + 1} retried by ${p.name}`);
+    startLevel();
+    io.emit('levelRetryNotification', { by: p.name });
+  });
+
   socket.on('input', ({ left, right, up }) => {
     const p = players[socket.id];
     if (!p) return;
