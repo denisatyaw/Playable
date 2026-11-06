@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎮 BoxBuds Co-op</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══ LOBBY SCREEN ═══ -->
+  <div id="screen-lobby" class="screen active">
+    <div class="lobby-card">
+      <div class="game-title">
+        <span class="title-pico">BOX</span>
+        <span class="title-co">BUDS</span>
+      </div>
+      <p class="game-subtitle">Work together. Jump higher. Escape!</p>
+
+      <div class="form-group">
+        <label for="player-name">Your Name</label>
+        <input id="player-name" type="text" maxlength="12"
+               placeholder="e.g. CoolDude" autocomplete="off" />
+      </div>
+
+      <button id="btn-join" class="btn btn-primary">Join Game</button>
+
+      <!-- Player list (shown after joining) -->
+      <div id="waiting-area" class="hidden">
+        <div class="player-count-label">
+          Players in Lobby: <span id="player-count">0</span> / 5
+          <span id="min-player-hint" class="min-hint"> (need 2 to start)</span>
+        </div>
+        <ul id="player-list"></ul>
+        <button id="btn-start" class="btn btn-success hidden">▶ Start Game</button>
+        <p id="start-hint" class="waiting-text hidden">Waiting for 1 more player…</p>
+        <p id="waiting-msg" class="waiting-text">Waiting for host to start…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ GAME SCREEN ═══ -->
+  <div id="screen-game" class="screen">
+    <div class="game-wrapper">
+      <div class="game-hud">
+        <div class="hud-left">
+          <span id="hud-level">Level 1</span>
+        </div>
+        <div class="hud-center">
+          <span id="hud-key-status" class="key-status">🔑 Key: Not Collected</span>
+        </div>
+        <div class="hud-right">
+          <span id="hud-players">👥 1 Player</span>
+          <button id="btn-leave" class="btn btn-leave" title="Leave Game">⬅ Leave</button>
+          <button id="btn-end-game" class="btn btn-leave btn-end hidden" title="End game for everyone">🏳 End Game</button>
+        </div>
+      </div>
+      <canvas id="game-canvas"></canvas>
+      <div class="controls-hint">
+        <span>⬅ A / ← Move</span>
+        <span>➡ D / → Move</span>
+        <span>⬆ W / ↑ / Space Jump</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ WIN SCREEN ═══ -->
+  <div id="screen-win" class="screen">
+    <div class="win-card">
+      <div class="win-emoji">🎉</div>
+      <h1 class="win-title">Level Complete!</h1>
+      <p class="win-subtitle">Amazing teamwork, everyone!</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button id="btn-restart" class="btn btn-primary">🔄 Play Again</button>
+        <button id="btn-lobby-from-win" class="btn btn-leave">⬅ Back to Lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ REJECTED SCREEN ═══ -->
+  <div id="screen-rejected" class="screen">
+    <div class="lobby-card">
+      <div class="win-emoji">🚫</div>
+      <h2 style="color:#FF4D6D;margin:0 0 12px">Game Unavailable</h2>
+      <p id="reject-reason" style="color:#aaa;margin:0 0 24px">The game is in progress or the room is full.</p>
+      <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
