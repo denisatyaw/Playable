@@ -32,6 +32,17 @@
           <span id="min-player-hint" class="min-hint"> (need 2 to start)</span>
         </div>
         <ul id="player-list"></ul>
+
+        <!-- Host Level Selector -->
+        <div id="host-level-select-wrap" class="form-group hidden" style="margin-top: 4px;">
+          <label for="select-level">Level Permainan</label>
+          <select id="select-level" class="custom-select">
+            <option value="0">Level 1 – First Steps (Tutorial)</option>
+            <option value="1">Level 2 – The Step (Heavy Box DDS)</option>
+            <option value="2">Level 3 – Hold the Door (Buttons DDS)</option>
+          </select>
+        </div>
+
         <button id="btn-start" class="btn btn-success hidden">▶ Start Game</button>
         <p id="start-hint" class="waiting-text hidden">Waiting for 1 more player…</p>
         <p id="waiting-msg" class="waiting-text">Waiting for host to start…</p>
@@ -45,12 +56,13 @@
       <div class="game-hud">
         <div class="hud-left">
           <span id="hud-level">Level 1</span>
+          <span id="hud-dds" class="dds-badge">⚙ Dynamic DDS</span>
         </div>
         <div class="hud-center">
           <span id="hud-key-status" class="key-status">🔑 Key: Not Collected</span>
         </div>
         <div class="hud-right">
-          <span id="hud-players">👥 1 Player</span>
+          <span id="hud-players">👥 2 Players</span>
           <button id="btn-leave" class="btn btn-leave" title="Leave Game">⬅ Leave</button>
           <button id="btn-end-game" class="btn btn-leave btn-end hidden" title="End game for everyone">🏳 End Game</button>
         </div>
@@ -71,6 +83,7 @@
       <h1 class="win-title">Level Complete!</h1>
       <p class="win-subtitle">Amazing teamwork, everyone!</p>
       <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button id="btn-next-level" class="btn btn-success hidden">▶ Next Level</button>
         <button id="btn-restart" class="btn btn-primary">🔄 Play Again</button>
         <button id="btn-lobby-from-win" class="btn btn-leave">⬅ Back to Lobby</button>
       </div>

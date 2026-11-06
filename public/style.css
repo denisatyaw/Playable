@@ -338,5 +338,37 @@ html, body {
   font-weight: 400;
 }
 
+.custom-select {
+  background: var(--bg-card2);
+  border: 2px solid rgba(255,255,255,.1);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--text-main);
+  font-size: .92rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color .2s;
+}
+
+.custom-select:focus {
+  border-color: var(--accent2);
+}
+
+.custom-select option {
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+.dds-badge {
+  font-size: .72rem;
+  font-weight: 700;
+  background: rgba(76, 201, 240, 0.15);
+  color: var(--accent2);
+  border: 1px solid rgba(76, 201, 240, 0.35);
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: .03em;
+}
+
 /* ─── Utility ───────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }
