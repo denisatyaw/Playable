@@ -229,13 +229,14 @@ function initLevelEntities(lvl, pCount) {
   // 4. Dynamic Lasers (Laser Grid DDS: lapis laser = playerCount - 1)
   const reqLasers = Math.max(1, pCount - 1);
   lvl.activeLasers = (lvl.lasers || []).map((l, idx) => ({
-    id    : l.id,
-    x     : l.x,
-    y     : l.y,
-    w     : l.w,
-    h     : l.h,
-    index : l.index !== undefined ? l.index : idx,
-    active: idx < reqLasers,
+    id         : l.id,
+    x          : l.x,
+    y          : l.y,
+    w          : l.w,
+    h          : l.h,
+    orientation: l.orientation || 'vertical',
+    index      : l.index !== undefined ? l.index : idx,
+    active     : l.active !== undefined ? l.active : (idx < reqLasers),
   }));
 
   // 5. Dynamic Springboards (Bantalan Lompat)
@@ -276,6 +277,7 @@ function initLevelEntities(lvl, pCount) {
       ammoId    : null,
       launcherId: null,
       tension   : 0,
+      angle     : 0.785, // Default 45 derajat (0.785 rad)
       isPulling : false,
       cooldown  : 0,
     };
@@ -835,19 +837,31 @@ function updateSlingshot(lvl, dt) {
     if (activeLauncher) {
       sling.launcherId = activeLauncher.id;
 
-      // Pemain B menekan dan menahan tombol mundur (kiri [A / ←]) untuk menarik ketapel
+      // 1. Atur Sudut Lontar (Aim Angle) via Keyboard (W/S atau Panah Atas/Bawah) atau Mouse
+      if (typeof activeLauncher.aimAngle === 'number') {
+        sling.angle = activeLauncher.aimAngle;
+      } else {
+        if (activeLauncher.keys.up) {
+          sling.angle = Math.min(1.31, (sling.angle || 0.785) + dt * 0.9); // Maksimal ~75 derajat
+        }
+        if (activeLauncher.keys.down) {
+          sling.angle = Math.max(0.26, (sling.angle || 0.785) - dt * 0.9); // Minimal ~15 derajat
+        }
+      }
+      if (sling.angle === undefined) sling.angle = 0.785;
+
+      // 2. Tarik ketapel dengan menahan tombol mundur (kiri [A / ←])
       if (activeLauncher.keys.left) {
         sling.isPulling = true;
         sling.tension = Math.min(sling.maxTension, sling.tension + dt);
       } else if (sling.isPulling) {
-        // 🚀 SAAT DILEPAS: PARABOLIC LAUNCH!
+        // 🚀 SAAT DILEPAS: PARABOLIC LAUNCH SESUAI SUDUT & TENSION!
         const tensionRatio = Math.max(0.12, sling.tension / sling.maxTension);
 
-        // Formula parabola terkalibrasi:
-        // vx = 800 + T * 1050 (px/s ke kanan)
-        // vy = -(750 + T * 500) (px/s ke atas, lalu melengkung oleh gravitasi 1800 px/s²)
-        const launchVx = 800 + tensionRatio * 1050;
-        const launchVy = -(750 + tensionRatio * 500);
+        // Kecepatan peluru terkalibrasi:
+        const speed = 950 + tensionRatio * 1150;
+        const launchVx = speed * Math.cos(sling.angle);
+        const launchVy = -speed * Math.sin(sling.angle);
 
         ammoPlayer.vx = launchVx;
         ammoPlayer.vy = launchVy;
@@ -861,7 +875,7 @@ function updateSlingshot(lvl, dt) {
         sling.isPulling = false;
         sling.cooldown = 0.6;
 
-        io.emit('slingshotFired', { tension: tensionRatio, vx: launchVx, vy: launchVy });
+        io.emit('slingshotFired', { tension: tensionRatio, angle: sling.angle, vx: launchVx, vy: launchVy });
       } else {
         sling.tension = Math.max(0, sling.tension - dt * 2);
       }
@@ -880,11 +894,12 @@ function updateSlingshot(lvl, dt) {
       }
     }
 
-    // Kunci posisi ammo di kantong (tertarik mundur sesuai tension)
+    // Kunci posisi ammo di kantong (tertarik mundur sesuai sudut dan tension)
     if (sling.ammoId === ammoPlayer.id) {
       const stretchOffset = (sling.tension / sling.maxTension) * 44;
-      ammoPlayer.x = sling.pouchX - ammoPlayer.w / 2 - stretchOffset;
-      ammoPlayer.y = sling.pouchY - ammoPlayer.h;
+      const angle = sling.angle || 0.785;
+      ammoPlayer.x = sling.pouchX - ammoPlayer.w / 2 - Math.cos(angle) * stretchOffset;
+      ammoPlayer.y = sling.pouchY - ammoPlayer.h + Math.sin(angle) * (stretchOffset * 0.5);
       ammoPlayer.vx = 0;
       ammoPlayer.vy = 0;
     }
@@ -1213,12 +1228,16 @@ io.on('connection', socket => {
     io.emit('levelRetryNotification', { by: p.name });
   });
 
-  socket.on('input', ({ left, right, up }) => {
+  socket.on('input', ({ left, right, up, down, aimAngle }) => {
     const p = players[socket.id];
     if (!p) return;
     p.keys.left  = !!left;
     p.keys.right = !!right;
     p.keys.up    = !!up;
+    p.keys.down  = !!down;
+    if (typeof aimAngle === 'number' && !isNaN(aimAngle)) {
+      p.aimAngle = Math.max(0.26, Math.min(1.31, aimAngle));
+    }
   });
 
   // ── Pemain minta keluar dari sesi game (kembali ke lobby sendiri) ──────────

@@ -81,8 +81,9 @@ let currentCamX     = 0;
 let renderCamX      = 0;
 
 // Input tracking
-const keys     = { left: false, right: false, up: false };
-let   lastSent = { left: false, right: false, up: false };
+const keys          = { left: false, right: false, up: false, down: false };
+let   lastSent      = { left: false, right: false, up: false, down: false, aimAngle: 0.785 };
+let   localAimAngle = 0.785; // Default 45 derajat (0.785 rad)
 
 // Animation
 let keyAnim     = 0;
@@ -252,6 +253,7 @@ document.addEventListener('keydown', e => {
   if (['ArrowLeft',  'a', 'A'].includes(e.key))                      keys.left  = true;
   if (['ArrowRight', 'd', 'D'].includes(e.key))                      keys.right = true;
   if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) { e.preventDefault(); keys.up = true; }
+  if (['ArrowDown', 's', 'S'].includes(e.key))    { e.preventDefault(); keys.down = true; }
 
   // Keyboard shortcut R untuk Retry
   if (['r', 'R'].includes(e.key) && screens.game.classList.contains('active')) {
@@ -264,14 +266,46 @@ document.addEventListener('keyup', e => {
   if (['ArrowLeft',  'a', 'A'].includes(e.key))  keys.left  = false;
   if (['ArrowRight', 'd', 'D'].includes(e.key))  keys.right = false;
   if (['ArrowUp', 'w', 'W', ' '].includes(e.key)) keys.up   = false;
+  if (['ArrowDown', 's', 'S'].includes(e.key))    keys.down = false;
+});
+
+// Arahkan sudut ketapel (Aim Angle) via mouse
+canvas.addEventListener('mousemove', e => {
+  if (!currentSlingshot || currentSlingshot.launcherId !== myId) return;
+  const rect = canvas.getBoundingClientRect();
+  const scale = parseFloat(canvas.dataset.scale) || 1;
+  const mouseX = (e.clientX - rect.left) / scale + renderCamX;
+  const mouseY = (e.clientY - rect.top) / scale;
+
+  const dx = mouseX - currentSlingshot.pouchX;
+  const dy = currentSlingshot.pouchY - mouseY;
+  if (dx > 20) {
+    const rawAngle = Math.atan2(dy, dx);
+    localAimAngle = Math.max(0.26, Math.min(1.31, rawAngle)); // clamp 15° s/d 75°
+  }
 });
 
 // Kirim input pada 60 FPS saat terjadi perubahan
 setInterval(() => {
   if (!myId) return;
-  if (keys.left !== lastSent.left || keys.right !== lastSent.right || keys.up !== lastSent.up) {
-    socket.emit('input', { left: keys.left, right: keys.right, up: keys.up });
-    lastSent = { ...keys };
+
+  // Jika sedang menarik ketapel dan menekan W/S / Up/Down, sesuaikan sudut
+  if (currentSlingshot && currentSlingshot.launcherId === myId && currentSlingshot.isPulling) {
+    if (keys.up)   localAimAngle = Math.min(1.31, (localAimAngle || 0.785) + 0.025);
+    if (keys.down) localAimAngle = Math.max(0.26, (localAimAngle || 0.785) - 0.025);
+  }
+
+  const angleDiff = Math.abs((localAimAngle || 0.785) - (lastSent.aimAngle || 0.785));
+  if (keys.left !== lastSent.left || keys.right !== lastSent.right ||
+      keys.up !== lastSent.up || keys.down !== lastSent.down || angleDiff > 0.03) {
+    socket.emit('input', {
+      left    : keys.left,
+      right   : keys.right,
+      up      : keys.up,
+      down    : keys.down,
+      aimAngle: localAimAngle,
+    });
+    lastSent = { ...keys, aimAngle: localAimAngle };
   }
 }, 1000 / 60);
 
@@ -908,37 +942,128 @@ function drawSlingshot() {
   const { x, y, w, h, pouchX, pouchY, maxTension, tension, ammoId, launcherId } = sling;
   const isDark = document.body.classList.contains('dark-theme');
 
+  // Sudut aim aktif (gunakan localAimAngle jika pemain lokal adalah launcher)
+  const angle = (launcherId === myId && typeof localAimAngle === 'number')
+    ? localAimAngle
+    : (sling.angle || 0.785);
+  const angleDeg = Math.round(angle * 180 / Math.PI);
+
   const tensionRatio = Math.min(1, Math.max(0, (tension || 0) / (maxTension || 3.0)));
-  const stretchOffset = tensionRatio * 44;
+  const stretchDist = tensionRatio * 44;
+
+  const stretchX = Math.cos(angle) * stretchDist;
+  const stretchY = -Math.sin(angle) * (stretchDist * 0.5);
 
   const forkLeftX  = x + 10;
   const forkRightX = x + w - 10;
   const forkTopY   = y + 8;
-  const pouchCurX  = pouchX - stretchOffset;
-  const pouchCurY  = pouchY - 14;
+  const pouchCurX  = pouchX - stretchX;
+  const pouchCurY  = pouchY - 14 + stretchY;
 
   ctx.save();
 
-  // 1. Dotted Parabolic Trajectory Preview (ketika tension > 0)
-  if (tensionRatio > 0.05) {
+  // 1. Dotted Parabolic Trajectory Preview & Landing Target Indicator
+  if (tensionRatio > 0.05 || (launcherId === myId && ammoId)) {
     ctx.save();
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([5, 6]);
-    ctx.strokeStyle = `rgba(249, 115, 22, ${0.4 + tensionRatio * 0.5})`;
 
-    const previewVx = 800 + tensionRatio * 1050;
-    const previewVy = -(750 + tensionRatio * 500);
+    // Hitung kecepatan berdasarkan power
+    const effTension = Math.max(0.12, tensionRatio);
+    const speed = 950 + effTension * 1150;
+    const previewVx = speed * Math.cos(angle);
+    const previewVy = -speed * Math.sin(angle);
     const g = 1800;
+
+    // Lacak lintasan parabola dan cari titik pendaratan (Landing Surface Collision)
+    const points = [];
+    let landing = null;
+
+    for (let t = 0; t <= 1.8; t += 0.02) {
+      const px = pouchCurX + previewVx * t;
+      const py = pouchCurY + previewVy * t + 0.5 * g * t * t;
+      points.push({ x: px, y: py });
+
+      // Cek tabrakan dengan Ledge / Lantai
+      // Peak: x [2520, 2760], y ~200
+      if (px >= 2520 && px <= 2760 && py >= 195 && py <= 235) {
+        landing = { x: px, y: 200, name: 'PUNCAK (KEY)', color: '#f59e0b', ok: true };
+        break;
+      }
+      // Ledge 3: x [2360, 2520], y ~280
+      if (px >= 2360 && px <= 2520 && py >= 275 && py <= 315) {
+        landing = { x: px, y: 280, name: 'LEDGE #3', color: '#a855f7', ok: true };
+        break;
+      }
+      // Ledge 2: x [2160, 2320], y ~360
+      if (px >= 2160 && px <= 2320 && py >= 355 && py <= 395) {
+        landing = { x: px, y: 360, name: 'LEDGE #2', color: '#06b6d4', ok: true };
+        break;
+      }
+      // Ledge 1: x [1920, 2120], y ~440
+      if (px >= 1920 && px <= 2120 && py >= 435 && py <= 475) {
+        landing = { x: px, y: 440, name: 'LEDGE #1', color: '#10b981', ok: true };
+        break;
+      }
+      // Lantai dasar tebing kanan (x >= 1840, y >= 550)
+      if (px >= 1840 && py >= 555) {
+        landing = { x: px, y: 560, name: 'DASAR KANAN', color: '#38bdf8', ok: true };
+        break;
+      }
+      // Jatuh ke jurang maut (x < 1840, y >= 560)
+      if (py >= 565) {
+        landing = { x: px, y: 565, name: 'JURANG (GAGAL)', color: '#ef4444', ok: false };
+        break;
+      }
+    }
+
+    const trajectoryColor = landing ? landing.color : '#f97316';
+
+    // Gambar garis lengkung parabola bertitik-titik
+    ctx.lineWidth = 2.8;
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = trajectoryColor;
+    ctx.shadowColor = trajectoryColor;
+    ctx.shadowBlur = 8;
 
     ctx.beginPath();
     ctx.moveTo(pouchCurX, pouchCurY);
-    for (let t = 0.05; t <= 1.4; t += 0.04) {
-      const px = pouchCurX + previewVx * t;
-      const py = pouchCurY + previewVy * t + 0.5 * g * t * t;
-      if (py > 580) break;
-      ctx.lineTo(px, py);
+    for (const pt of points) {
+      ctx.lineTo(pt.x, pt.y);
     }
     ctx.stroke();
+
+    // Gambar Target Landing Reticle di titik benturan
+    if (landing) {
+      const pulse = Math.sin(Date.now() / 150) * 4;
+      ctx.setLineDash([]);
+      ctx.fillStyle = landing.color;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+
+      // Lingkaran luar target
+      ctx.beginPath();
+      ctx.arc(landing.x, landing.y, 14 + pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Titik pusat target
+      ctx.beginPath();
+      ctx.arc(landing.x, landing.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Label pendaratan interaktif
+      ctx.font = 'bold 10px Segoe UI, sans-serif';
+      ctx.textAlign = 'center';
+      const labelText = landing.ok ? `[✓ PAS DI ${landing.name}]` : `[⚠ ${landing.name}!]`;
+      const txtW = ctx.measureText(labelText).width + 12;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+      roundRect(ctx, landing.x - txtW / 2, landing.y - 28, txtW, 16, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = landing.color;
+      ctx.fillText(labelText, landing.x, landing.y - 16);
+    }
+
     ctx.restore();
   }
 
@@ -956,13 +1081,11 @@ function drawSlingshot() {
 
   // 3. Tiang Garpu Kayu Y-Post Ketapel
   ctx.save();
-  // Bayangan tiang di lantai
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
   ctx.ellipse(x + w / 2, y + h + 2, 24, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Tiang utama tegak
   const woodGrad = ctx.createLinearGradient(x, y, x + w, y);
   woodGrad.addColorStop(0, '#854d0e');
   woodGrad.addColorStop(0.5, '#a16207');
@@ -972,12 +1095,10 @@ function drawSlingshot() {
   ctx.strokeStyle = '#451a03';
   ctx.lineWidth = 2.5;
 
-  // Batang bawah
   roundRect(ctx, x + w / 2 - 8, y + 28, 16, h - 28, 4);
   ctx.fill();
   ctx.stroke();
 
-  // Garpu Kiri
   ctx.beginPath();
   ctx.moveTo(x + w / 2 - 6, y + 34);
   ctx.lineTo(forkLeftX, forkTopY);
@@ -987,7 +1108,6 @@ function drawSlingshot() {
   ctx.fill();
   ctx.stroke();
 
-  // Garpu Kanan
   ctx.beginPath();
   ctx.moveTo(x + w / 2 + 6, y + 34);
   ctx.lineTo(forkRightX, forkTopY);
@@ -997,7 +1117,6 @@ function drawSlingshot() {
   ctx.fill();
   ctx.stroke();
 
-  // Ujung pengait kulit garpu
   ctx.fillStyle = '#b45309';
   ctx.beginPath();
   ctx.arc(forkLeftX, forkTopY, 5, 0, Math.PI * 2);
@@ -1017,17 +1136,16 @@ function drawSlingshot() {
   ctx.lineTo(pouchCurX, pouchCurY);
   ctx.stroke();
 
-  // Kantong Kulit Pouch
   ctx.fillStyle = '#451a03';
   ctx.strokeStyle = '#78350f';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.ellipse(pouchCurX, pouchCurY, 8, 14, -0.2, 0, Math.PI * 2);
+  ctx.ellipse(pouchCurX, pouchCurY, 8, 14, -angle * 0.4, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 
-  // 5. Visual Hints & Tension Gauge UI
+  // 5. Visual Hints, Aim Angle Compass, & Segmented Tension Gauge UI
   if (!ammoId) {
     const bob = Math.sin(Date.now() / 250) * 4;
     ctx.save();
@@ -1047,43 +1165,74 @@ function drawSlingshot() {
     ctx.textAlign = 'center';
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 4;
-    ctx.fillText('⚡ PELURU SIAP!', pouchCurX, y - 24 + bob);
+    ctx.fillText('⚡ PELURU SIAP!', pouchCurX, y - 36 + bob);
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 10px Segoe UI, sans-serif';
-    ctx.fillText('Rekan di belakang tahan [A / ←] Tarik!', pouchCurX, y - 12 + bob);
+    ctx.fillText('Tahan [A / ←] Tarik Daya', pouchCurX, y - 22 + bob);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText(`Atur Sudut (${angleDeg}°): Tekan [W / S] atau Geser Mouse`, pouchCurX, y - 9 + bob);
     ctx.restore();
   } else {
-    // TENSION GAUGE BAR (Indikator Daya Lontar 0 - 100%)
-    const barW = 100;
-    const barH = 12;
+    // TENSION GAUGE BAR DENGAN NOTCH MARKER & INDIKATOR SUDUT
+    const barW = 140;
+    const barH = 14;
     const barX = pouchCurX - barW / 2;
-    const barY = y - 36;
+    const barY = y - 48;
     const pct  = Math.round(tensionRatio * 100);
 
     ctx.save();
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+
+    // 1. Indikator Sudut Lontar di atas gauge
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 10px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(`🏹 SUDUT: ${angleDeg}° (W / S / Mouse untuk atur)`, pouchCurX, barY - 8);
+
+    // 2. Background bar
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 1.5;
     roundRect(ctx, barX, barY, barW, barH, 4);
     ctx.fill();
     ctx.stroke();
 
+    // 3. Notch Markers (Ledge 1: 50%, Ledge 2: 68%, Ledge 3: 82%, Peak: 95%)
+    const notches = [
+      { pct: 0.50, label: 'L1' },
+      { pct: 0.68, label: 'L2' },
+      { pct: 0.82, label: 'L3' },
+      { pct: 0.95, label: 'PEAK' },
+    ];
+    notches.forEach(n => {
+      const nx = barX + (barW - 4) * n.pct;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(nx, barY + 2);
+      ctx.lineTo(nx, barY + barH - 2);
+      ctx.stroke();
+    });
+
+    // 4. Isi Pengisian Bar
     const fillW = Math.max(0, (barW - 4) * tensionRatio);
     const barGrad = ctx.createLinearGradient(barX, barY, barX + barW, barY);
-    barGrad.addColorStop(0, '#facc15');
-    barGrad.addColorStop(0.6, '#f97316');
+    barGrad.addColorStop(0, '#10b981');
+    barGrad.addColorStop(0.5, '#facc15');
+    barGrad.addColorStop(0.8, '#f97316');
     barGrad.addColorStop(1, '#ef4444');
 
     ctx.fillStyle = barGrad;
     roundRect(ctx, barX + 2, barY + 2, fillW, barH - 4, 2);
     ctx.fill();
 
+    // 5. Label Persen & Status
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 9px Segoe UI, sans-serif';
     ctx.textAlign = 'center';
-    ctx.shadowColor = 'rgba(0,0,0,0.8)';
-    ctx.shadowBlur = 3;
-    ctx.fillText(`DAYA ${pct}% (LEPAS [A] UNTUK TEMBAK!)`, pouchCurX, barY - 6);
+    ctx.fillText(`DAYA ${pct}% (LEPAS [A] UNTUK TEMBAK!)`, pouchCurX, barY + 10);
+
     ctx.restore();
   }
 
