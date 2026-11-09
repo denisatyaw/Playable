@@ -20,6 +20,7 @@ const level17 = require('./level17');
 const level18 = require('./level18');
 const level19 = require('./level19');
 const level20 = require('./level20');
+const level21 = require('./level21');
 
 module.exports = [
   level1,
@@ -42,4 +43,5 @@ module.exports = [
   level18,
   level19,
   level20,
+  level21,
 ];

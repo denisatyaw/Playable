@@ -66,32 +66,8 @@ module.exports = {
       wFormula: (pCount) => 50 + (pCount * 38),
     },
   ],
-  // Tombol Jembatan Darurat di Dermaga Kanan
-  buttons: [
-    {
-      id     : 'btn_ferry_safety',
-      x      : 1720,
-      y      : 466,
-      w      : 44,
-      h      : 14,
-      isLatch: true,
-      group  : 1,
-      label  : 'JEMBATAN DARURAT',
-    },
-  ],
-  // Jembatan Darurat yang membentang jika tombol darurat diinjak
-  bridges: [
-    {
-      id     : 'bridge_ferry_safety',
-      x      : 480,
-      y      : 480,
-      w      : 1160,
-      h      : 14,
-      group  : 1,
-      active : false,
-      latched: false,
-    },
-  ],
+  buttons     : [],
+  bridges     : [],
   // Laser Bahaya di dasar jurang
   lasers: [
     {

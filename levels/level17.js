@@ -66,7 +66,6 @@ module.exports = {
       y      : 546,
       w      : 44,
       h      : 14,
-      group  : 1,
       label  : 'SAKLAR ILUSI A',
     },
     // Tombol B di Dermaga Seberang (Juga Menyalakan Lantai Ilusi)
@@ -76,24 +75,10 @@ module.exports = {
       y      : 546,
       w      : 44,
       h      : 14,
-      group  : 1,
       label  : 'SAKLAR ILUSI B',
     },
   ],
-  bridges: [
-    // Jembatan Permanen yang membentang jika Kunci Emas diambil
-    {
-      id          : 'bridge_faith_safety',
-      x           : 640,
-      y           : 546,
-      w           : 1200,
-      h           : 14,
-      group       : 1,
-      hideInactive: true,
-      active      : false,
-      latched     : false,
-    },
-  ],
+  bridges     : [],
   boxes       : [],
   gates       : [],
   lasers      : [],

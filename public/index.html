@@ -68,7 +68,7 @@
             <p id="level-selection-hint" class="level-subhint">Klik level untuk memilihnya (Hanya Host)</p>
           </div>
           <span class="badge-pill highlight">
-            <span id="unlocked-count">5</span> / 10 Terbuka
+            <span id="unlocked-count">20</span> / 20 Terbuka
           </span>
         </div>
 
@@ -92,6 +92,7 @@
         </div>
         <div class="hud-right">
           <span id="hud-players">👥 2 Pemain</span>
+          <button id="btn-select-level" class="btn btn-action btn-select-level" title="Pilih Level Lain">🗺️ Pilih Level</button>
           <button id="btn-retry" class="btn btn-action btn-retry" title="Ulangi Level Ini (R)">🔄 Retry</button>
           <button id="btn-leave" class="btn btn-action btn-leave" title="Keluar ke Lobby">⬅ Keluar</button>
           <button id="btn-end-game" class="btn btn-action btn-end hidden" title="Akhiri game untuk semua">🏳 Akhiri</button>
@@ -129,6 +130,7 @@
       <p class="win-subtitle">Kerja sama tim yang luar biasa!</p>
       <div class="win-btn-row">
         <button id="btn-next-level" class="btn btn-success hidden">▶ Level Selanjutnya</button>
+        <button id="btn-select-level-win" class="btn btn-action btn-select-level">🗺️ Pilih Level</button>
         <button id="btn-restart" class="btn btn-primary">🔄 Main Lagi</button>
         <button id="btn-lobby-from-win" class="btn btn-leave">⬅ Kembali ke Lobby</button>
       </div>
@@ -142,6 +144,31 @@
       <h2 style="color:#FF4D6D;margin:0 0 12px">Room Tidak Tersedia</h2>
       <p id="reject-reason" style="color:var(--text-muted);margin:0 0 24px">Permainan sedang berlangsung atau room sudah penuh (Maks 5).</p>
       <button class="btn btn-primary" onclick="location.reload()">Coba Lagi</button>
+    </div>
+  </div>
+
+  <!-- ═══ MODAL LEVEL SELECT (PILIH LEVEL) ═══ -->
+  <div id="modal-level-select" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <span style="font-size:1.5rem">🗺️</span>
+          <div>
+            <h2 style="margin:0;font-size:1.25rem;color:var(--text-primary)">Pilih Level Permainan</h2>
+            <p style="margin:2px 0 0;font-size:0.8rem;color:var(--text-muted)">Pilih tantangan yang ingin dimainkan bersama seluruh tim</p>
+          </div>
+        </div>
+        <button id="btn-close-modal-level" class="modal-close-btn" title="Tutup">&times;</button>
+      </div>
+
+      <div id="modal-level-grid" class="modal-level-grid">
+        <!-- Diisi secara dinamis dari ALL_LEVELS (20 Level) -->
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-modal-to-lobby" class="btn btn-action btn-leave">⬅ Kembali ke Menu Lobby</button>
+        <button id="btn-modal-close" class="btn btn-action">Tutup</button>
+      </div>
     </div>
   </div>
 

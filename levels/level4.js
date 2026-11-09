@@ -96,21 +96,7 @@ module.exports = {
       gateId : 'gate_lvl4_wall1',
       label  : 'BUKA GERBANG',
     },
-    // Kait jembatan di seberang jurang (x: 2200):
-    {
-      id     : 'btn_latch_lvl4_gap',
-      x      : 2200,
-      y      : 546,
-      w      : 44,
-      h      : 14,
-      isLatch: true,
-      group  : 1,
-      label  : 'KUNCI JEMBATAN',
-    }
   ],
-  bridges: [
-    // Jembatan Jurang 2: terbentang saat tombol Kait di seberang diinjak!
-    { id: 'bridge_lvl4_gap', x: 1920, y: 546, w: 240, h: 14, group: 1, active: false, latched: false },
-  ],
+  bridges: [],
   lasers: [],
 };

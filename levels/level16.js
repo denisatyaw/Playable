@@ -1,19 +1,32 @@
 'use strict';
 
-// ── LEVEL 16: Hamster Power (Generator Wheel & Sky Elevator) ──────────────────
-// Jarak: 2600 px (65 Kolom, 2.1x Panjang Layar)
-// Fitur Baru: Generator Wheel (Roda Hamster).
-// - Area roda berongga (x: 680, y: 500). Pemain yang berlari di dalamnya akan mengisi tenaga listrik.
-// SKALA KESULITAN DINAMIS (DDS):
-// - Generator membutuhkan tenaga lari dari (playerCount - 2) pemain secara serempak!
-//   * 2 Pemain : Butuh 1 pelari di roda, 1 rekan naik elevator.
-//   * 3 Pemain : Butuh 1 pelari di roda, 2 rekan naik elevator.
-//   * 4 Pemain : Butuh 2 pelari di roda, 2 rekan naik elevator.
-//   * 5 Pemain : Butuh 3 pelari di roda, 2 rekan naik elevator.
-// PUZZLE & CARA MENANG:
-// - Listrik roda menggerakkan Elevator Vertikal (minY: 200, maxY: 520) ke Brankas Langit.
-// - Rekan di atas mengambil Kunci dan menginjak tombol [JEMBATAN BANTUAN] di x: 1540.
-// - Jembatan bawah terbentang permanen agar seluruh pelari di roda bisa menyeberang ke Pintu Keluar.
+// ── LEVEL 16: Hamster Power (Generator Wheel & Electric Bridges) ───────────────
+// Dimensi: 2600 x 600 px (65 Kolom x 15 Baris, Tile: 40px)
+// Fitur Utama: Roda Hamster (Generator Wheel) & Jembatan Listrik (Electric Bridges).
+//
+// 💡 LOGIKA PUZZLE & ALUR PERJALANAN MENUJU TITIK AKHIR:
+// 1. TEBING AWAL (x: 0 - 960):
+//    - Tempat spawn pemain dan Roda Generator Hamster (x: 640).
+// 2. JURANG LISTRIK (x: 960 - 1920):
+//    - Terdapat jurang dalam yang memisahkan tebing awal dari pintu akhir.
+//    - Di tengah jurang terdapat Pulau Batu Kunci (x: 1280 - 1440) tempat Kunci Emas bertengger.
+//    - Terdapat 2 bentangan Jembatan Listrik:
+//      * Jembatan 1 (x: 960 - 1280): Menghubungkan tebing awal ke Pulau Kunci.
+//      * Jembatan 2 (x: 1440 - 1920): Menghubungkan Pulau Kunci ke Tebing Akhir.
+// 3. MEKANIK LISTRIK RODA HAMSTER (ANTI-NGEBUT & SANTAI):
+//    - Pemain berlari di roda hamster untuk mengisi daya baterai generator (0% → 100%).
+//    - Pengisian berlangsung stabil & teratur (~4 detik lari stabil).
+//    - Saat berdaya listrik, kedua Jembatan Listrik menyala solid bercahaya neon biru.
+//    - Rekan setim dapat menyeberang dengan aman, mengambil Kunci di Pulau Tengah,
+//      dan menyeberang ke Tebing Akhir.
+// 4. SISTEM PENGUNCI PERMANEN (SEMUA PEMAIN BISA MENYEBERANG):
+//    - OVERCHARGE LATCH: Jika generator dipacu mencapai 100%, generator & jembatan
+//      otomatis TERKUNCI PERMANEN! Seluruh pelari bisa keluar roda dan menyeberang bersama.
+//    - SAKLAR CADANGAN: Di tebing akhir terdapat tombol [KUNCI JEMBATAN] (x: 2000).
+//      Rekan yang menyeberang duluan bisa menginjak tombol ini untuk mengunci jembatan
+//      secara instan agar pelari di roda bisa menyusul.
+//    - DISCHARGE SANTAI: Jika pemain keluar sebelum 100%, daya berkurang sangat perlahan
+//      (~16.6 detik) sehingga tidak ada kepanikan atau rasa terburu-buru.
 
 module.exports = {
   id      : 16,
@@ -30,7 +43,7 @@ module.exports = {
     '00000000000000000000000000000000000000000000000000000000000000000', // 2
     '00000000000000000000000000000000000000000000000000000000000000000', // 3
     '00000000000000000000000000000000000000000000000000000000000000000', // 4
-    '00000000000000000000000000000000111111110000000000000000000000000', // 5  - Brankas Langit (col 32-39, y: 200)
+    '00000000000000000000000000000000000000000000000000000000000000000', // 5
     '00000000000000000000000000000000000000000000000000000000000000000', // 6
     '00000000000000000000000000000000000000000000000000000000000000000', // 7
     '00000000000000000000000000000000000000000000000000000000000000000', // 8
@@ -38,8 +51,8 @@ module.exports = {
     '00000000000000000000000000000000000000000000000000000000000000000', // 10
     '00000000000000000000000000000000000000000000000000000000000000000', // 11
     '00000000000000000000000000000000000000000000000000000000000000000', // 12
-    '00000000000000000000000000000000000000000000000000000000000000000', // 13
-    '11111111111111111111111100000000000000000000000011111111111111111', // 14 - Jurang di cols 24-47 (x: 960-1920)
+    '00000000000000000000000000000000111100000000000000000000000000000', // 13 - Puncak Pulau Kunci (cols 32-35, y: 520)
+    '11111111111111111111111100000000111100000000000011111111111111111', // 14 - Tebing Awal (0-23), Pulau Kunci (32-35), Tebing Akhir (48-64)
   ],
   spawns: [
     { x:  80, y: 500 },
@@ -52,61 +65,60 @@ module.exports = {
   generatorWheels: [
     {
       id               : 'gen_wheel_hamster',
-      x                : 680,
+      x                : 640,
       y                : 500,
       radius           : 48,
       power            : 0,
-      targetType       : 'elevator',
-      targetId         : 'elev_power_hamster',
-      reqRunnersFormula: (pCount) => Math.max(1, pCount - 2),
+      group            : 1,
+      targetType       : 'bridge',
+      targetId         : 'bridge_wheel_1',
+      targetBridgeIds  : ['bridge_wheel_1', 'bridge_wheel_2'],
+      reqRunnersFormula: (pCount) => Math.max(1, Math.min(2, Math.floor(pCount / 2))),
     },
   ],
-  // Elevator Listrik yang naik turun seiring tenaga roda
-  movingPlatforms: [
+  // 2 Bentangan Jembatan Listrik Menyeberangi Jurang
+  bridges: [
     {
-      id   : 'elev_power_hamster',
-      x    : 1120,
-      y    : 520,
-      w    : 110,
-      h    : 18,
-      minY : 200,
-      maxY : 520,
-      speed: 0,
-      dir  : 0,
-      label: 'ELEVATOR LISTRIK',
+      id                : 'bridge_wheel_1',
+      x                 : 960,
+      y                 : 546,
+      w                 : 320,
+      h                 : 14,
+      group             : 1,
+      isGeneratorPowered: true,
+      label             : 'JEMBATAN LISTRIK 1',
+    },
+    {
+      id                : 'bridge_wheel_2',
+      x                 : 1440,
+      y                 : 546,
+      w                 : 480,
+      h                 : 14,
+      group             : 1,
+      isGeneratorPowered: true,
+      label             : 'JEMBATAN LISTRIK 2',
     },
   ],
-  key : { x: 1420, y: 150 },
-  door: { x: 2440, y: 488 },
-  doorW: 48,
-  doorH: 72,
+  // Tombol Kunci Jembatan di Tebing Akhir (memudahkan pelari roda menyusul kawan)
   buttons: [
     {
-      id     : 'btn_wheel_bridge',
-      x      : 1540,
-      y      : 186,
+      id     : 'btn_wheel_latch',
+      x      : 2000,
+      y      : 546,
       w      : 44,
       h      : 14,
       isLatch: true,
       group  : 1,
-      label  : 'JEMBATAN BANTUAN',
+      label  : 'KUNCI JEMBATAN',
     },
   ],
-  bridges: [
-    {
-      id     : 'bridge_wheel_safety',
-      x      : 960,
-      y      : 546,
-      w      : 960,
-      h      : 14,
-      group  : 1,
-      active : false,
-      latched: false,
-    },
-  ],
-  boxes       : [],
-  gates       : [],
-  lasers      : [],
-  springboards: [],
+  key : { x: 1360, y: 460 },
+  door: { x: 2440, y: 488 },
+  doorW: 48,
+  doorH: 72,
+  movingPlatforms: [],
+  boxes          : [],
+  gates          : [],
+  lasers         : [],
+  springboards   : [],
 };
-

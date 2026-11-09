@@ -889,6 +889,12 @@ function drawCinematicCamBadge() {
 function drawBackground(camX) {
   const isDark = document.body.classList.contains('dark-theme');
 
+  // Khusus Level 12: Sunset Alpine Mountain (Tema Puncak Timbangan)
+  if (currentLevel && currentLevel.id === 12) {
+    drawLevel12Background(camX, isDark);
+    return;
+  }
+
   if (isDark) {
     const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
     grad.addColorStop(0, '#0a0d17');
@@ -914,6 +920,79 @@ function drawBackground(camX) {
     cloudOffset += 0.25;
     drawCuteClouds(camX, cloudOffset);
   }
+}
+
+function drawLevel12Background(camX, isDark) {
+  ctx.save();
+  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+  if (isDark) {
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.35, '#1e1b4b');
+    grad.addColorStop(0.7, '#312e81');
+    grad.addColorStop(1, '#020617');
+  } else {
+    grad.addColorStop(0, '#f97316'); // Golden Sunset
+    grad.addColorStop(0.25, '#fb923c');
+    grad.addColorStop(0.55, '#f472b6'); // Alpine Pink
+    grad.addColorStop(0.85, '#a855f7'); // Twilight Purple
+    grad.addColorStop(1, '#6366f1'); // Deep Indigo Valley
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  // Matahari Terbenam / Bulan Gunung
+  const sunX = VIEW_W * 0.72 - (camX * 0.04) % (VIEW_W + 300);
+  const sunY = 150;
+  const sunGrad = ctx.createRadialGradient(sunX, sunY, 15, sunX, sunY, 110);
+  if (isDark) {
+    sunGrad.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+    sunGrad.addColorStop(0.35, 'rgba(250, 204, 21, 0.4)');
+    sunGrad.addColorStop(1, 'rgba(250, 204, 21, 0)');
+  } else {
+    sunGrad.addColorStop(0, 'rgba(255, 247, 237, 1)');
+    sunGrad.addColorStop(0.25, 'rgba(254, 215, 170, 0.8)');
+    sunGrad.addColorStop(0.6, 'rgba(249, 115, 22, 0.35)');
+    sunGrad.addColorStop(1, 'rgba(249, 115, 22, 0)');
+  }
+  ctx.fillStyle = sunGrad;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, 110, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pegunungan Alpine Lapis 1 (Jauh - Siluet Ungu Berkabut)
+  ctx.fillStyle = isDark ? 'rgba(30, 27, 75, 0.65)' : 'rgba(107, 33, 168, 0.4)';
+  ctx.beginPath();
+  ctx.moveTo(0, VIEW_H);
+  const farOffset = (camX * 0.12) % 600;
+  for (let x = -600; x <= VIEW_W + 600; x += 300) {
+    const px = x - farOffset;
+    ctx.lineTo(px, VIEW_H - 170);
+    ctx.lineTo(px + 140, VIEW_H - 310);
+    ctx.lineTo(px + 300, VIEW_H - 170);
+  }
+  ctx.lineTo(VIEW_W, VIEW_H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Pegunungan Alpine Lapis 2 (Menengah - Puncak Runcing Siluet Gelap)
+  ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.88)' : 'rgba(76, 29, 149, 0.6)';
+  ctx.beginPath();
+  ctx.moveTo(0, VIEW_H);
+  const midOffset = (camX * 0.22) % 400;
+  for (let x = -400; x <= VIEW_W + 400; x += 200) {
+    const px = x - midOffset;
+    ctx.lineTo(px, VIEW_H - 110);
+    ctx.lineTo(px + 90, VIEW_H - 220);
+    ctx.lineTo(px + 200, VIEW_H - 110);
+  }
+  ctx.lineTo(VIEW_W, VIEW_H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Parallax Awan Senja Lembut
+  cloudOffset += 0.2;
+  drawCuteClouds(camX, cloudOffset);
+  ctx.restore();
 }
 
 function drawCuteClouds(camX, offset) {
@@ -1086,52 +1165,150 @@ function drawMovingPlatforms() {
 // ── Seesaws (Level 12 The Balance) ───────────────────────────────────────────
 function drawSeesaws() {
   if (!currentSeesaws || currentSeesaws.length === 0) return;
+  const isDark = document.body.classList.contains('dark-theme');
+
   currentSeesaws.forEach(sw => {
     ctx.save();
-    // 1. Fulcrum / Pivot Triangle
-    ctx.fillStyle = '#64748b';
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = 3;
+    const halfL = sw.length / 2;
+    const h = sw.thickness || 14;
+    const curAngle = sw.angle || 0;
+    const deg = (curAngle * 180 / Math.PI);
+    const isBalanced = Math.abs(curAngle) < 0.035;
+
+    // 1. Fulcrum Stand (Heavy Industrial Triangular A-Frame)
+    const standW = 44;
+    const standH = 34;
+    const baseGrad = ctx.createLinearGradient(sw.pivotX - standW / 2, sw.pivotY, sw.pivotX + standW / 2, sw.pivotY + standH);
+    baseGrad.addColorStop(0, isDark ? '#334155' : '#64748b');
+    baseGrad.addColorStop(0.5, isDark ? '#1e293b' : '#475569');
+    baseGrad.addColorStop(1, isDark ? '#0f172a' : '#334155');
+
+    ctx.fillStyle = baseGrad;
+    ctx.strokeStyle = isDark ? '#64748b' : '#1e293b';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(sw.pivotX, sw.pivotY - 2);
-    ctx.lineTo(sw.pivotX - 16, sw.pivotY + 28);
-    ctx.lineTo(sw.pivotX + 16, sw.pivotY + 28);
+    ctx.moveTo(sw.pivotX, sw.pivotY);
+    ctx.lineTo(sw.pivotX - standW / 2, sw.pivotY + standH);
+    ctx.lineTo(sw.pivotX + standW / 2, sw.pivotY + standH);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
 
-    // Pivot pin circle
-    ctx.fillStyle = '#f8fafc';
+    // Cross-strut detail on stand
+    ctx.strokeStyle = isDark ? '#475569' : '#94a3b8';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(sw.pivotX, sw.pivotY, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(sw.pivotX - 10, sw.pivotY + 16);
+    ctx.lineTo(sw.pivotX + 10, sw.pivotY + 16);
+    ctx.stroke();
 
     // 2. Rotating Beam
+    ctx.save();
     ctx.translate(sw.pivotX, sw.pivotY);
-    ctx.rotate(sw.angle || 0);
+    ctx.rotate(curAngle);
 
-    const halfL = sw.length / 2;
-    const h = sw.thickness || 14;
+    // Dynamic glow if balanced or active
+    if (isBalanced) {
+      ctx.shadowColor = '#10b981';
+      ctx.shadowBlur = 10;
+    } else {
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 4;
+    }
 
+    // Heavy reinforced beam gradient
     const beamGrad = ctx.createLinearGradient(0, -h / 2, 0, h / 2);
-    beamGrad.addColorStop(0, '#e2e8f0');
-    beamGrad.addColorStop(0.5, '#cbd5e1');
-    beamGrad.addColorStop(1, '#94a3b8');
+    if (isDark) {
+      beamGrad.addColorStop(0, '#475569');
+      beamGrad.addColorStop(0.4, '#334155');
+      beamGrad.addColorStop(1, '#1e293b');
+    } else {
+      beamGrad.addColorStop(0, '#f8fafc');
+      beamGrad.addColorStop(0.3, '#cbd5e1');
+      beamGrad.addColorStop(0.7, '#94a3b8');
+      beamGrad.addColorStop(1, '#64748b');
+    }
 
     ctx.fillStyle = beamGrad;
-    ctx.strokeStyle = '#0284c7';
+    ctx.strokeStyle = isBalanced ? '#10b981' : (isDark ? '#38bdf8' : '#0284c7');
     ctx.lineWidth = 2;
     roundRect(ctx, -halfL, -h / 2, sw.length, h, 4);
     ctx.fill();
     ctx.stroke();
 
-    // Non-slip rubber pads on ends
+    // Tread lines / grip pattern across the beam
+    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)';
+    ctx.lineWidth = 1;
+    for (let gx = -halfL + 25; gx < halfL - 20; gx += 20) {
+      ctx.beginPath();
+      ctx.moveTo(gx, -h / 2 + 2);
+      ctx.lineTo(gx + 6, h / 2 - 2);
+      ctx.stroke();
+    }
+
+    // Colored non-slip hazard edges
+    // Left edge (Merah / Rose)
     ctx.fillStyle = '#ef4444';
-    roundRect(ctx, -halfL + 4, -h / 2 - 2, 44, 4, 2);
+    roundRect(ctx, -halfL + 2, -h / 2 - 2, 48, 4, 2);
     ctx.fill();
+    // Right edge (Hijau Emerald)
     ctx.fillStyle = '#10b981';
-    roundRect(ctx, halfL - 48, -h / 2 - 2, 44, 4, 2);
+    roundRect(ctx, halfL - 50, -h / 2 - 2, 48, 4, 2);
     ctx.fill();
+
+    // Center balance marker
+    ctx.fillStyle = isBalanced ? '#10b981' : '#f59e0b';
+    ctx.beginPath();
+    ctx.moveTo(0, -h / 2 - 4);
+    ctx.lineTo(-4, -h / 2);
+    ctx.lineTo(4, -h / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+
+    // 3. Heavy Pivot Axle Pin (drawn on top of beam)
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = '#0284c7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sw.pivotX, sw.pivotY, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#0f172a';
+    ctx.beginPath();
+    ctx.arc(sw.pivotX, sw.pivotY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 4. Tilt Angle HUD Readout Pill (below fulcrum)
+    const meterY = sw.pivotY + standH + 14;
+    ctx.font = 'bold 10px Segoe UI, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    let meterText = `⚖️ ${Math.abs(deg).toFixed(1)}°`;
+    if (isBalanced) {
+      meterText = `⚖️ 0.0° (SEIMBANG)`;
+    } else if (deg > 0) {
+      meterText = `⚖️ ${deg.toFixed(1)}° ▶`;
+    } else {
+      meterText = `◀ ${Math.abs(deg).toFixed(1)}° ⚖️`;
+    }
+
+    const mMetrics = ctx.measureText(meterText);
+    const pillW = Math.max(76, mMetrics.width + 16);
+    const pillH = 18;
+
+    ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeStyle = isBalanced ? '#10b981' : (Math.abs(deg) > 15 ? '#ef4444' : '#38bdf8');
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, sw.pivotX - pillW / 2, meterY - pillH / 2, pillW, pillH, 9);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = isBalanced ? '#10b981' : (isDark ? '#e2e8f0' : '#1e293b');
+    ctx.fillText(meterText, sw.pivotX, meterY);
 
     ctx.restore();
   });

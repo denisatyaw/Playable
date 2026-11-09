@@ -115,7 +115,7 @@ module.exports = {
   // Tombol Terminal untuk mematikan rintangan laser permanen setelah berhasil dilewati perisai
   buttons: [
     { id: 'btn_off_h1', x: 780,  y: 426, w: 42, h: 14, isLatch: true, laserIndex: 0, label: 'MATIKAN LASER #1' },
-    { id: 'btn_off_v1', x: 1220, y: 466, w: 42, h: 14, isLatch: true, laserIndex: 1, label: 'MATIKAN LASER ATAS' },
+    { id: 'btn_off_v1', x: 1180, y: 466, w: 42, h: 14, isLatch: true, laserIndex: 1, label: 'MATIKAN LASER ATAS' },
     { id: 'btn_off_v2', x: 1660, y: 506, w: 42, h: 14, isLatch: true, laserIndex: 3, label: 'MATIKAN GAUNTLET' },
   ],
   boxes       : [],

@@ -17,6 +17,9 @@ module.exports = {
   worldW  : 2400,
   worldH  : 600,
   tileSize: 40,
+  // Flag: Jurang di lantai adalah intentional pit yang diseberangi via stepping stones (row 12)
+  // dan dilindungi laser bahaya di bawahnya, bukan "gap tanpa jembatan"
+  pitDesignIntentional: true,
   darkness: {
     enabled      : true,
     ambientRadius: 50,

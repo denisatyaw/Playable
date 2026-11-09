@@ -70,16 +70,18 @@ module.exports = {
   ],
   // Lantai Ilusi yang Menyala Saat Arus Listrik Mengalir
   invisiblePlatforms: [
-    // Segmen 1: Ditenagai oleh Generator A
-    { id: 'inv_u20_1', x: 660,  y: 530, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
-    { id: 'inv_u20_2', x: 840,  y: 500, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
-    { id: 'inv_u20_3', x: 1020, y: 470, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
-    { id: 'inv_u20_4', x: 1200, y: 510, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
-    // Segmen 2: Ditenagai oleh Generator B
-    { id: 'inv_u20_5', x: 1660, y: 520, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
-    { id: 'inv_u20_6', x: 1840, y: 480, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
-    { id: 'inv_u20_7', x: 2020, y: 510, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
-    { id: 'inv_u20_8', x: 2200, y: 540, w: 90, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
+    // Segmen 1: Ditenagai oleh Generator A (spacing ~180px maks gap antar platform)
+    { id: 'inv_u20_1', x: 660,  y: 530, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
+    { id: 'inv_u20_2', x: 860,  y: 500, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
+    { id: 'inv_u20_3', x: 1060, y: 470, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
+    { id: 'inv_u20_4', x: 1260, y: 510, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_a' },
+    // Stepping stone antara Segmen 1 dan Segmen 2 (Pulau Tengah row 14 cols 34-39 = x:1360-1600)
+    // Gap dari inv_u20_4 (x:1360) ke Pulau Tengah (x:1360) = 0px → langsung nyambung!
+    // Segmen 2: Ditenagai oleh Generator B (dari Pulau Tengah x:1600 ke Brankas x:2320)
+    { id: 'inv_u20_5', x: 1680, y: 520, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
+    { id: 'inv_u20_6', x: 1880, y: 490, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
+    { id: 'inv_u20_7', x: 2080, y: 510, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
+    { id: 'inv_u20_8', x: 2240, y: 530, w: 100, h: 20, revealWithPower: true, powerGenId: 'gen_wheel_20_b' },
   ],
   key : { x: 2480, y: 500 },
   door: { x: 2680, y: 488 },
